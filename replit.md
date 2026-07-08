@@ -1,15 +1,17 @@
-# [Project name]
+# PiOps — Pi Wallet Auto-Forwarder
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A dashboard for monitoring Pi Network wallets and automatically forwarding incoming funds to a destination address.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- **Frontend**: workflow `artifacts/pi-forwarder: web` — React/Vite dev server (auto-started)
+- **API**: workflow `artifacts/api-server: API Server` — Express 5 server (auto-started)
+- `pnpm install` — install all workspace dependencies
+- `pnpm --filter @workspace/db run push` — push DB schema changes to dev database
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `DATABASE_URL` is runtime-managed by Replit — no manual setup needed
 
 ## Stack
 
