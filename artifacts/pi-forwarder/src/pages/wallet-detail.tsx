@@ -30,7 +30,7 @@ import { truncateHash } from "./dashboard";
 
 const formSchema = z.object({
   label: z.string().min(1, "Label is required"),
-  destinationAddress: z.string().min(1, "OKX deposit address is required").regex(/^G[A-Z2-7]{55}$/, "Must be a valid Pi/Stellar address (starts with G)"),
+  destinationAddress: z.string().min(1, "OKX deposit address is required").regex(/^(G[A-Z2-7]{55}|M[A-Z2-7]{68})$/, "Must be a valid Pi/Stellar address (starts with G or M)"),
   secretKey: z.string().regex(/^S[A-Z2-7]{55}$/, "Must be a valid Pi/Stellar secret key (starts with S)").optional().or(z.literal("")),
 });
 
@@ -311,7 +311,7 @@ export default function WalletDetail() {
                       <FormItem>
                         <FormLabel>OKX Deposit Address</FormLabel>
                         <FormControl>
-                          <Input placeholder="G…" {...field} className="font-mono bg-accent/50" spellCheck={false} />
+                          <Input placeholder="G… or M…" {...field} className="font-mono bg-accent/50" spellCheck={false} />
                         </FormControl>
                         <FormDescription>All incoming Pi is forwarded here immediately.</FormDescription>
                         <FormMessage />

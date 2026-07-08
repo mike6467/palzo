@@ -19,7 +19,7 @@ const formSchema = z.object({
   destinationAddress: z
     .string()
     .min(1, "OKX deposit address is required")
-    .regex(/^G[A-Z2-7]{55}$/, "Must be a valid Stellar/Pi address (56 characters, starts with G)"),
+    .regex(/^(G[A-Z2-7]{55}|M[A-Z2-7]{68})$/, "Must be a valid Stellar/Pi address (starts with G or M)"),
 });
 
 export default function WalletNew() {
@@ -125,7 +125,7 @@ export default function WalletNew() {
                     <FormLabel>OKX Deposit Address</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="G…"
+                        placeholder="G… or M…"
                         {...field}
                         className="font-mono bg-accent/50"
                         spellCheck={false}
