@@ -1,0 +1,28 @@
+# Git
+.git
+.gitignore
+
+# Build outputs (rebuilt inside Docker)
+artifacts/*/dist
+artifacts/*/node_modules
+lib/*/dist
+lib/*/node_modules
+node_modules
+
+# Replit-specific
+.replit
+replit.nix
+.local/
+.upm/
+.cache/
+.config/
+
+# Dev / editor files
+*.zip
+*.log
+.env
+.env.*
+!.env.example
+
+# Source maps (optional — remove this line if you need them in production)
+# *.map
