@@ -40,12 +40,42 @@ export function getAllRunningWalletIds(): number[] {
     .map(([id]) => id);
 }
 
+// Pi Network reserve rules:
+//   1.00 Pi  — base network reserve (permanently locked, required by Stellar protocol)
+//   0.02 Pi  — fee buffer kept in wallet to cover transaction fees
+//   -------
+//   1.02 Pi  total minimum balance that must remain in every source wallet at all times
+const NETWORK_RESERVE_PI = 1.0;
+const FEE_BUFFER_PI = 0.02;
+const TOTAL_HOLD_PI = NETWORK_RESERVE_PI + FEE_BUFFER_PI; // 1.02 Pi
+
 interface PiTransaction {
   id: string;
   type: string;
   from: string;
   to: string;
   amount: string;
+}
+
+interface PiAccountBalance {
+  asset_type: string;
+  balance: string;
+}
+
+interface PiAccount {
+  balances: PiAccountBalance[];
+}
+
+async function fetchWalletBalance(address: string): Promise<number> {
+  const resp = await fetch(`https://api.mainnet.minepi.com/accounts/${address}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch wallet balance: ${resp.status} ${resp.statusText}`);
+  }
+  const account = (await resp.json()) as PiAccount;
+  const native = account.balances?.find((b) => b.asset_type === "native");
+  return native ? parseFloat(native.balance) : 0;
 }
 
 async function forwardPi(
@@ -107,27 +137,55 @@ async function pollWallet(walletId: number) {
         continue;
       }
 
-      logger.info({ walletId, txId: tx.id, amount: tx.amount }, "Detected incoming Pi, recording");
+      logger.info({ walletId, txId: tx.id, amount: tx.amount }, "Detected incoming Pi, calculating forwardable amount");
+      state.seenTxHashes.add(tx.id);
+
+      // Fetch live balance to calculate exactly how much can be forwarded
+      // after leaving the required reserve in the wallet.
+      let currentBalance: number;
+      try {
+        currentBalance = await fetchWalletBalance(wallet.sourceAddress);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        state.lastError = `Balance fetch failed: ${msg}`;
+        logger.error({ err, walletId, txId: tx.id }, "Could not fetch wallet balance");
+        continue;
+      }
+
+      // forwardable = balance − 1.02 Pi (1 Pi reserve + 0.02 Pi fee buffer)
+      const forwardableAmount = parseFloat((currentBalance - TOTAL_HOLD_PI).toFixed(7));
+
+      if (forwardableAmount <= 0) {
+        logger.info(
+          { walletId, txId: tx.id, currentBalance, totalHold: TOTAL_HOLD_PI },
+          "Insufficient balance to forward after reserve — skipping"
+        );
+        state.lastError = `Balance ${currentBalance} π is below reserve threshold (${TOTAL_HOLD_PI} π required). No Pi forwarded.`;
+        continue;
+      }
+
+      logger.info(
+        { walletId, txId: tx.id, currentBalance, forwardableAmount, totalHold: TOTAL_HOLD_PI },
+        "Forwarding Pi after reserve deduction"
+      );
 
       const [record] = await db
         .insert(transfersTable)
         .values({
           walletId,
           incomingTxHash: tx.id,
-          amount: tx.amount ?? "0",
+          amount: forwardableAmount.toFixed(7),
           fromAddress: tx.from ?? null,
           status: "pending",
         })
         .returning();
-
-      state.seenTxHashes.add(tx.id);
 
       try {
         const outTxHash = await forwardPi(
           wallet.sourceAddress,
           wallet.destinationAddress,
           wallet.secretKey,
-          tx.amount ?? "0"
+          forwardableAmount.toFixed(7)
         );
 
         await db
@@ -136,7 +194,10 @@ async function pollWallet(walletId: number) {
           .where(eq(transfersTable.id, record.id));
 
         state.lastError = null;
-        logger.info({ walletId, txId: tx.id, outTxHash }, "Successfully forwarded Pi");
+        logger.info(
+          { walletId, txId: tx.id, outTxHash, forwardedAmount: forwardableAmount },
+          "Successfully forwarded Pi"
+        );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         await db
