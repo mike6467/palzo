@@ -29,36 +29,41 @@ export interface Wallet {
   /** Total Pi forwarded by this wallet */
   totalForwarded?: string;
   transferCount?: number;
+  /**
+     * Live Pi balance of the source wallet (returned on create/update)
+     * @nullable
+     */
+  currentBalance?: string | null;
 }
 
 export interface WalletInput {
-  /** @minLength 1 */
-  label: string;
-  /** @minLength 1 */
-  sourceAddress: string;
-  /** @minLength 1 */
-  destinationAddress: string;
-  /** @minLength 1 */
+  /**
+     * Optional friendly name. Auto-generated from address if omitted.
+     * @minLength 1
+     */
+  label?: string;
+  /**
+     * Pi wallet secret key (starts with S). Source address is derived from this.
+     * @minLength 1
+     */
   secretKey: string;
   /**
-     * @minimum 10
-     * @maximum 3600
+     * Destination address to forward all incoming Pi to (e.g. OKX deposit address).
+     * @minLength 1
      */
-  pollIntervalSeconds?: number;
+  destinationAddress: string;
 }
 
 export interface WalletUpdate {
   /** @minLength 1 */
   label?: string;
-  sourceAddress?: string;
+  /** New destination address to forward Pi to. */
   destinationAddress?: string;
-  /** @nullable */
-  secretKey?: string | null;
   /**
-     * @minimum 10
-     * @maximum 3600
+     * New secret key. If provided, source address is re-derived automatically.
+     * @nullable
      */
-  pollIntervalSeconds?: number;
+  secretKey?: string | null;
 }
 
 export interface MonitorSummary {

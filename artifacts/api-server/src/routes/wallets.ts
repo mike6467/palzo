@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { Keypair } from "stellar-sdk";
 import { db, walletsTable, transfersTable } from "@workspace/db";
 import {
   CreateWalletBody,
@@ -17,7 +18,8 @@ import {
   StopWalletMonitorResponse,
 } from "@workspace/api-zod";
 import { eq, count, sum } from "drizzle-orm";
-import { startWalletMonitor, stopWalletMonitor, getWalletMonitorState } from "../lib/monitor";
+import { startWalletMonitor, stopWalletMonitor, getWalletMonitorState, fetchWalletBalance } from "../lib/monitor";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -37,7 +39,12 @@ async function getWalletStats(walletId: number) {
   return { totalForwarded: totalForwarded.toFixed(7), transferCount };
 }
 
-function buildWalletResponse(wallet: typeof walletsTable.$inferSelect, monitorState: ReturnType<typeof getWalletMonitorState>, stats: { totalForwarded: string; transferCount: number }) {
+function buildWalletResponse(
+  wallet: typeof walletsTable.$inferSelect,
+  monitorState: ReturnType<typeof getWalletMonitorState>,
+  stats: { totalForwarded: string; transferCount: number },
+  currentBalance?: string
+) {
   return {
     id: wallet.id,
     label: wallet.label,
@@ -52,6 +59,7 @@ function buildWalletResponse(wallet: typeof walletsTable.$inferSelect, monitorSt
     createdAt: wallet.createdAt.toISOString(),
     totalForwarded: stats.totalForwarded,
     transferCount: stats.transferCount,
+    currentBalance: currentBalance ?? null,
   };
 }
 
@@ -76,16 +84,51 @@ router.post("/wallets", async (req, res): Promise<void> => {
     return;
   }
 
-  const { label, sourceAddress, destinationAddress, secretKey, pollIntervalSeconds } = parsed.data;
-  const isConfigured = !!(sourceAddress && destinationAddress && secretKey);
+  const { label, secretKey, destinationAddress } = parsed.data;
+
+  // Derive the source address from the secret key
+  let sourceAddress: string;
+  try {
+    sourceAddress = Keypair.fromSecret(secretKey).publicKey();
+  } catch {
+    res.status(400).json({ error: "Invalid secret key. Please provide a valid Pi/Stellar secret key (starts with 'S')." });
+    return;
+  }
+
+  // Fetch the current balance to confirm the wallet is reachable and show the user
+  let currentBalance = "0.0000000";
+  try {
+    const bal = await fetchWalletBalance(sourceAddress);
+    currentBalance = bal.toFixed(7);
+  } catch (err) {
+    logger.warn({ err, sourceAddress }, "Could not fetch balance during wallet creation — continuing anyway");
+  }
+
+  // Auto-generate label from address if not provided
+  const walletLabel = label?.trim() || `${sourceAddress.slice(0, 6)}…${sourceAddress.slice(-4)}`;
 
   const [wallet] = await db
     .insert(walletsTable)
-    .values({ label, sourceAddress, destinationAddress, secretKey, pollIntervalSeconds: pollIntervalSeconds ?? 30, isConfigured })
+    .values({
+      label: walletLabel,
+      sourceAddress,
+      destinationAddress,
+      secretKey,
+      pollIntervalSeconds: 10, // poll every 10s for near-instant forwarding
+      isConfigured: true,
+    })
     .returning();
 
+  // Auto-start monitoring immediately after creation
+  try {
+    await startWalletMonitor(wallet.id);
+    logger.info({ walletId: wallet.id }, "Monitor auto-started after wallet creation");
+  } catch (err) {
+    logger.warn({ err, walletId: wallet.id }, "Could not auto-start monitor after creation");
+  }
+
   const [state, stats] = await Promise.all([getWalletMonitorState(wallet.id), getWalletStats(wallet.id)]);
-  res.status(201).json(CreateWalletResponse.parse(buildWalletResponse(wallet, state, stats)));
+  res.status(201).json(CreateWalletResponse.parse(buildWalletResponse(wallet, state, stats, currentBalance)));
 });
 
 router.get("/wallets/:id", async (req, res): Promise<void> => {
@@ -113,10 +156,29 @@ router.put("/wallets/:id", async (req, res): Promise<void> => {
 
   const updates: Partial<typeof walletsTable.$inferInsert> = {};
   if (parsed.data.label !== undefined) updates.label = parsed.data.label;
-  if (parsed.data.sourceAddress !== undefined) updates.sourceAddress = parsed.data.sourceAddress;
   if (parsed.data.destinationAddress !== undefined) updates.destinationAddress = parsed.data.destinationAddress;
-  if (parsed.data.secretKey !== undefined && parsed.data.secretKey !== null) updates.secretKey = parsed.data.secretKey;
-  if (parsed.data.pollIntervalSeconds !== undefined) updates.pollIntervalSeconds = parsed.data.pollIntervalSeconds;
+
+  // If a new secret key is provided, re-derive the source address from it
+  let currentBalance: string | undefined;
+  if (parsed.data.secretKey) {
+    let newSourceAddress: string;
+    try {
+      newSourceAddress = Keypair.fromSecret(parsed.data.secretKey).publicKey();
+    } catch {
+      res.status(400).json({ error: "Invalid secret key. Please provide a valid Pi/Stellar secret key (starts with 'S')." });
+      return;
+    }
+    updates.secretKey = parsed.data.secretKey;
+    updates.sourceAddress = newSourceAddress;
+
+    // Fetch updated balance for the new source address
+    try {
+      const bal = await fetchWalletBalance(newSourceAddress);
+      currentBalance = bal.toFixed(7);
+    } catch (err) {
+      logger.warn({ err, newSourceAddress }, "Could not fetch balance after key update");
+    }
+  }
 
   const [wallet] = await db.update(walletsTable).set(updates).where(eq(walletsTable.id, params.data.id)).returning();
   const isConfigured = !!(wallet.sourceAddress && wallet.destinationAddress && wallet.secretKey);
@@ -124,7 +186,7 @@ router.put("/wallets/:id", async (req, res): Promise<void> => {
   wallet.isConfigured = isConfigured;
 
   const [state, stats] = await Promise.all([getWalletMonitorState(wallet.id), getWalletStats(wallet.id)]);
-  res.json(UpdateWalletResponse.parse(buildWalletResponse(wallet, state, stats)));
+  res.json(UpdateWalletResponse.parse(buildWalletResponse(wallet, state, stats, currentBalance)));
 });
 
 router.delete("/wallets/:id", async (req, res): Promise<void> => {

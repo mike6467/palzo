@@ -3,55 +3,61 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCreateWallet, getListWalletsQueryKey } from "@workspace/api-client-react";
+import { useCreateWallet, getListWalletsQueryKey, getGetMonitorSummaryQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Shield, Save } from "lucide-react";
+import { ArrowLeft, Shield, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const formSchema = z.object({
-  label: z.string().min(1, "Label is required"),
-  sourceAddress: z.string().min(1, "Source address is required"),
-  destinationAddress: z.string().min(1, "Destination address is required"),
-  secretKey: z.string().min(1, "Secret key is required"),
-  pollIntervalSeconds: z.coerce.number().min(10, "Minimum 10 seconds").max(3600, "Maximum 3600 seconds").default(10),
+  secretKey: z
+    .string()
+    .min(1, "Secret key is required")
+    .regex(/^S[A-Z2-7]{55}$/, "Must be a valid Pi/Stellar secret key (56 characters, starts with S)"),
+  destinationAddress: z
+    .string()
+    .min(1, "OKX deposit address is required")
+    .regex(/^G[A-Z2-7]{55}$/, "Must be a valid Stellar/Pi address (56 characters, starts with G)"),
 });
 
 export default function WalletNew() {
   const [_, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   const createWallet = useCreateWallet({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (data) => {
+        const balance = data.currentBalance ? `${parseFloat(data.currentBalance).toFixed(4)} π` : "unknown";
         toast({
-          title: "Node deployed",
-          description: "Wallet node successfully created.",
+          title: "Monitor active",
+          description: `Wallet ${data.sourceAddress?.slice(0, 8)}… deployed. Balance: ${balance}. Forwarding to your OKX address automatically.`,
         });
         queryClient.invalidateQueries({ queryKey: getListWalletsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetMonitorSummaryQueryKey() });
         setLocation("/");
       },
-      onError: (err) => {
+      onError: (err: unknown) => {
+        const msg =
+          err && typeof err === "object" && "message" in err
+            ? String((err as { message: unknown }).message)
+            : "An error occurred. Check that your secret key is valid.";
         toast({
           variant: "destructive",
-          title: "Deployment failed",
-          description: "An error occurred while creating the node.",
+          title: "Setup failed",
+          description: msg,
         });
-      }
-    }
+      },
+    },
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      label: "",
-      sourceAddress: "",
-      destinationAddress: "",
       secretKey: "",
-      pollIntervalSeconds: 10,
+      destinationAddress: "",
     },
   });
 
@@ -60,14 +66,16 @@ export default function WalletNew() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto pb-12">
+    <div className="space-y-6 max-w-xl mx-auto pb-12">
       <div className="flex items-center gap-4">
         <Button variant="outline" size="icon" onClick={() => setLocation("/")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Deploy Node</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Initialize a new wallet monitoring node.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Add Wallet</h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Enter your secret key and OKX address — everything else is derived automatically.
+          </p>
         </div>
       </div>
 
@@ -75,10 +83,10 @@ export default function WalletNew() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-primary" />
-            Node Configuration
+            Wallet Setup
           </CardTitle>
           <CardDescription>
-            Configure the source wallet to monitor and the destination to auto-forward to.
+            Your source address is derived from the secret key. Monitoring starts immediately after setup.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -86,61 +94,24 @@ export default function WalletNew() {
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <FormField
                 control={form.control}
-                name="label"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Node Label</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g. Main Cold Storage, Exchange Node 1" {...field} className="font-mono bg-accent/50" />
-                    </FormControl>
-                    <FormDescription>Friendly name to identify this monitoring node.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <FormField
-                  control={form.control}
-                  name="sourceAddress"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Source Address</FormLabel>
-                      <FormControl>
-                        <Input placeholder="G..." {...field} className="font-mono bg-accent/50" />
-                      </FormControl>
-                      <FormDescription>The wallet to monitor for incoming Pi.</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="destinationAddress"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Destination Address</FormLabel>
-                      <FormControl>
-                        <Input placeholder="G... or OKX address" {...field} className="font-mono bg-accent/50" />
-                      </FormControl>
-                      <FormDescription>Where to forward the received Pi.</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <FormField
-                control={form.control}
                 name="secretKey"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Secret Key</FormLabel>
+                    <FormLabel>Pi Wallet Secret Key</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="S..." {...field} className="font-mono bg-accent/50" />
+                      <Input
+                        type="password"
+                        placeholder="S…"
+                        {...field}
+                        className="font-mono bg-accent/50 tracking-widest"
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
                     </FormControl>
-                    <FormDescription>The secret key for the source wallet. Stored securely.</FormDescription>
+                    <FormDescription>
+                      56-character key starting with&nbsp;<span className="font-mono text-primary">S</span>.
+                      Your source wallet address is derived from this automatically.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -148,23 +119,48 @@ export default function WalletNew() {
 
               <FormField
                 control={form.control}
-                name="pollIntervalSeconds"
+                name="destinationAddress"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Poll Interval (seconds)</FormLabel>
+                    <FormLabel>OKX Deposit Address</FormLabel>
                     <FormControl>
-                      <Input type="number" min={10} max={3600} {...field} className="font-mono bg-accent/50" />
+                      <Input
+                        placeholder="G…"
+                        {...field}
+                        className="font-mono bg-accent/50"
+                        spellCheck={false}
+                      />
                     </FormControl>
-                    <FormDescription>How often to check for incoming transactions (10-3600).</FormDescription>
+                    <FormDescription>
+                      Your OKX Pi deposit address (starts with&nbsp;<span className="font-mono text-primary">G</span>).
+                      All incoming Pi will be forwarded here immediately.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              <div className="pt-4 flex justify-end">
-                <Button type="submit" disabled={createWallet.isPending} className="font-bold tracking-wider">
-                  <Save className="w-4 h-4 mr-2" />
-                  DEPLOY NODE
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm text-muted-foreground space-y-1">
+                <p className="font-medium text-foreground flex items-center gap-1.5">
+                  <Zap className="h-4 w-4 text-primary" /> What happens next
+                </p>
+                <ul className="list-disc list-inside space-y-0.5 pl-1">
+                  <li>Source address is derived from your secret key</li>
+                  <li>Current balance is checked</li>
+                  <li>Monitor starts — checking every 10 seconds</li>
+                  <li>Any incoming Pi is forwarded to your OKX address immediately</li>
+                  <li>1.02 π reserve is always kept in the source wallet</li>
+                </ul>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <Button
+                  type="submit"
+                  disabled={createWallet.isPending}
+                  className="font-bold tracking-wider"
+                >
+                  <Zap className="w-4 h-4 mr-2" />
+                  {createWallet.isPending ? "Setting up…" : "DEPLOY & START MONITORING"}
                 </Button>
               </div>
             </form>

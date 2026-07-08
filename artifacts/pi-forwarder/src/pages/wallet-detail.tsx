@@ -30,10 +30,8 @@ import { truncateHash } from "./dashboard";
 
 const formSchema = z.object({
   label: z.string().min(1, "Label is required"),
-  sourceAddress: z.string().min(1, "Source address is required"),
-  destinationAddress: z.string().min(1, "Destination address is required"),
-  secretKey: z.string().optional(),
-  pollIntervalSeconds: z.coerce.number().min(10, "Minimum 10 seconds").max(3600, "Maximum 3600 seconds").default(10),
+  destinationAddress: z.string().min(1, "OKX deposit address is required").regex(/^G[A-Z2-7]{55}$/, "Must be a valid Pi/Stellar address (starts with G)"),
+  secretKey: z.string().regex(/^S[A-Z2-7]{55}$/, "Must be a valid Pi/Stellar secret key (starts with S)").optional().or(z.literal("")),
 });
 
 export default function WalletDetail() {
@@ -84,10 +82,8 @@ export default function WalletDetail() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       label: "",
-      sourceAddress: "",
       destinationAddress: "",
       secretKey: "",
-      pollIntervalSeconds: 10,
     },
   });
 
@@ -95,18 +91,17 @@ export default function WalletDetail() {
     if (wallet) {
       form.reset({
         label: wallet.label,
-        sourceAddress: wallet.sourceAddress || "",
         destinationAddress: wallet.destinationAddress || "",
         secretKey: "",
-        pollIntervalSeconds: wallet.pollIntervalSeconds,
       });
     }
   }, [wallet, form]);
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
     updateWallet.mutate({ id: walletId, data: {
-      ...values,
-      secretKey: values.secretKey ? values.secretKey : undefined
+      label: values.label,
+      destinationAddress: values.destinationAddress,
+      secretKey: values.secretKey || undefined,
     }});
   };
 
@@ -285,6 +280,14 @@ export default function WalletDetail() {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {/* Read-only derived source address */}
+              <div className="mb-6 space-y-1.5">
+                <p className="text-sm font-medium">Source Address <span className="text-xs text-muted-foreground font-normal ml-1">(derived from secret key)</span></p>
+                <div className="flex items-center gap-2 rounded-md border border-border bg-accent/30 px-3 py-2">
+                  <span className="font-mono text-sm text-muted-foreground break-all select-all">{wallet.sourceAddress || "—"}</span>
+                </div>
+              </div>
+
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                   <FormField
@@ -292,7 +295,7 @@ export default function WalletDetail() {
                     name="label"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Node Label</FormLabel>
+                        <FormLabel>Label</FormLabel>
                         <FormControl>
                           <Input {...field} className="font-mono bg-accent/50" />
                         </FormControl>
@@ -300,47 +303,17 @@ export default function WalletDetail() {
                       </FormItem>
                     )}
                   />
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <FormField
-                      control={form.control}
-                      name="sourceAddress"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Source Address</FormLabel>
-                          <FormControl>
-                            <Input {...field} className="font-mono bg-accent/50" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <FormField
-                      control={form.control}
-                      name="destinationAddress"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Destination Address</FormLabel>
-                          <FormControl>
-                            <Input {...field} className="font-mono bg-accent/50" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
 
                   <FormField
                     control={form.control}
-                    name="secretKey"
+                    name="destinationAddress"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Secret Key (Optional)</FormLabel>
+                        <FormLabel>OKX Deposit Address</FormLabel>
                         <FormControl>
-                          <Input type="password" placeholder="Leave blank to keep current key" {...field} className="font-mono bg-accent/50" />
+                          <Input placeholder="G…" {...field} className="font-mono bg-accent/50" spellCheck={false} />
                         </FormControl>
-                        <FormDescription>Only enter a new key to change it.</FormDescription>
+                        <FormDescription>All incoming Pi is forwarded here immediately.</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -348,13 +321,14 @@ export default function WalletDetail() {
 
                   <FormField
                     control={form.control}
-                    name="pollIntervalSeconds"
+                    name="secretKey"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Poll Interval (seconds)</FormLabel>
+                        <FormLabel>Secret Key <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
                         <FormControl>
-                          <Input type="number" min={10} max={3600} {...field} className="font-mono bg-accent/50" />
+                          <Input type="password" placeholder="Leave blank to keep current key" {...field} className="font-mono bg-accent/50" autoComplete="off" />
                         </FormControl>
+                        <FormDescription>Enter a new key to replace it. Source address will be re-derived automatically.</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}

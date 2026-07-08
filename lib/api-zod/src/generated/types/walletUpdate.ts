@@ -9,13 +9,11 @@
 export interface WalletUpdate {
   /** @minLength 1 */
   label?: string;
-  sourceAddress?: string;
+  /** New destination address to forward Pi to. */
   destinationAddress?: string;
-  /** @nullable */
-  secretKey?: string | null;
   /**
-     * @minimum 10
-     * @maximum 3600
+     * New secret key. If provided, source address is re-derived automatically.
+     * @nullable
      */
-  pollIntervalSeconds?: number;
+  secretKey?: string | null;
 }

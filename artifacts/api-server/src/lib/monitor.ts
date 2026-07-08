@@ -1,6 +1,10 @@
+import { Keypair, Horizon, TransactionBuilder, Operation, Asset } from "stellar-sdk";
 import { db, walletsTable, transfersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
+
+const PI_NETWORK_PASSPHRASE = "Pi Network";
+const PI_HORIZON_URL = "https://api.mainnet.minepi.com";
 
 interface WalletMonitorState {
   running: boolean;
@@ -40,6 +44,11 @@ export function getAllRunningWalletIds(): number[] {
     .map(([id]) => id);
 }
 
+// Derive the public key (source address) from a Stellar/Pi secret key.
+export function derivePublicKey(secretKey: string): string {
+  return Keypair.fromSecret(secretKey).publicKey();
+}
+
 // Pi Network reserve rules:
 //   1.00 Pi  — base network reserve (permanently locked, required by Stellar protocol)
 //   0.02 Pi  — fee buffer kept in wallet to cover transaction fees
@@ -71,8 +80,8 @@ interface PiAccount {
   balances: PiAccountBalance[];
 }
 
-async function fetchWalletBalance(address: string): Promise<number> {
-  const resp = await fetch(`https://api.mainnet.minepi.com/accounts/${address}`, {
+export async function fetchWalletBalance(address: string): Promise<number> {
+  const resp = await fetch(`${PI_HORIZON_URL}/accounts/${address}`, {
     headers: { Accept: "application/json" },
   });
   if (!resp.ok) {
@@ -84,16 +93,37 @@ async function fetchWalletBalance(address: string): Promise<number> {
 }
 
 async function forwardPi(
-  _sourceAddress: string,
-  _destinationAddress: string,
-  _secretKey: string,
-  _amount: string
+  sourceAddress: string,
+  destinationAddress: string,
+  secretKey: string,
+  amount: string
 ): Promise<string> {
-  // Pi Network uses Stellar SDK for signing transactions.
-  // Install stellar-sdk to enable real forwarding:
-  //   pnpm --filter @workspace/api-server add stellar-sdk
-  logger.info({ _sourceAddress, _destinationAddress, _amount }, "Forwarding Pi (stub — install stellar-sdk to enable real signing)");
-  return `stub_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  logger.info({ sourceAddress, destinationAddress, amount }, "Submitting Pi forward transaction");
+
+  const server = new Horizon.Server(PI_HORIZON_URL, { allowHttp: false });
+  const keypair = Keypair.fromSecret(secretKey);
+
+  const account = await server.loadAccount(sourceAddress);
+  const fee = await server.fetchBaseFee();
+
+  const tx = new TransactionBuilder(account, {
+    fee: fee.toString(),
+    networkPassphrase: PI_NETWORK_PASSPHRASE,
+  })
+    .addOperation(
+      Operation.payment({
+        destination: destinationAddress,
+        asset: Asset.native(),
+        amount: amount,
+      })
+    )
+    .setTimeout(30)
+    .build();
+
+  tx.sign(keypair);
+
+  const result = await server.submitTransaction(tx);
+  return result.hash;
 }
 
 async function pollWallet(walletId: number) {
@@ -113,7 +143,7 @@ async function pollWallet(walletId: number) {
     // and do NOT contain the type/from/to/amount fields we need.
     // /payments returns individual payment operations with the correct fields.
     // order=desc ensures the newest payments are checked first.
-    const url = `https://api.mainnet.minepi.com/accounts/${wallet.sourceAddress}/payments?limit=20&order=desc`;
+    const url = `${PI_HORIZON_URL}/accounts/${wallet.sourceAddress}/payments?limit=20&order=desc`;
     logger.info({ walletId, url }, "Polling Pi payments");
     const resp = await fetch(url, { headers: { Accept: "application/json" } });
 
@@ -257,7 +287,7 @@ export async function startWalletMonitor(walletId: number): Promise<void> {
   state.running = true;
   state.lastError = null;
 
-  const intervalMs = (wallet.pollIntervalSeconds ?? 30) * 1000;
+  const intervalMs = (wallet.pollIntervalSeconds ?? 10) * 1000;
 
   await pollWallet(walletId);
   state.intervalHandle = setInterval(() => {

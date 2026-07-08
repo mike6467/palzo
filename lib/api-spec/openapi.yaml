@@ -286,27 +286,26 @@ components:
           description: Total Pi forwarded by this wallet
         transferCount:
           type: integer
+        currentBalance:
+          type: ["string", "null"]
+          description: Live Pi balance of the source wallet (returned on create/update)
 
     WalletInput:
       type: object
-      required: [label, sourceAddress, destinationAddress, secretKey]
+      required: [secretKey, destinationAddress]
       properties:
         label:
           type: string
           minLength: 1
-        sourceAddress:
-          type: string
-          minLength: 1
-        destinationAddress:
-          type: string
-          minLength: 1
+          description: Optional friendly name. Auto-generated from address if omitted.
         secretKey:
           type: string
           minLength: 1
-        pollIntervalSeconds:
-          type: integer
-          minimum: 10
-          maximum: 3600
+          description: Pi wallet secret key (starts with S). Source address is derived from this.
+        destinationAddress:
+          type: string
+          minLength: 1
+          description: Destination address to forward all incoming Pi to (e.g. OKX deposit address).
 
     WalletUpdate:
       type: object
@@ -314,16 +313,12 @@ components:
         label:
           type: string
           minLength: 1
-        sourceAddress:
-          type: string
         destinationAddress:
           type: string
+          description: New destination address to forward Pi to.
         secretKey:
           type: ["string", "null"]
-        pollIntervalSeconds:
-          type: integer
-          minimum: 10
-          maximum: 3600
+          description: New secret key. If provided, source address is re-derived automatically.
 
     MonitorSummary:
       type: object

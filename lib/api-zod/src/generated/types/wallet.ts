@@ -26,4 +26,9 @@ export interface Wallet {
   /** Total Pi forwarded by this wallet */
   totalForwarded?: string;
   transferCount?: number;
+  /**
+     * Live Pi balance of the source wallet (returned on create/update)
+     * @nullable
+     */
+  currentBalance?: string | null;
 }

@@ -32,7 +32,8 @@ export const ListWalletsResponseItem = zod.object({
   "lastError": zod.string().nullish(),
   "createdAt": zod.string(),
   "totalForwarded": zod.string().optional().describe('Total Pi forwarded by this wallet'),
-  "transferCount": zod.number().optional()
+  "transferCount": zod.number().optional(),
+  "currentBalance": zod.string().nullish().describe('Live Pi balance of the source wallet (returned on create\/update)')
 })
 export const ListWalletsResponse = zod.array(ListWalletsResponseItem)
 
@@ -44,17 +45,11 @@ export const ListWalletsResponse = zod.array(ListWalletsResponseItem)
 
 
 
-export const createWalletBodyPollIntervalSecondsMin = 10;
-export const createWalletBodyPollIntervalSecondsMax = 3600;
-
-
 
 export const CreateWalletBody = zod.object({
-  "label": zod.string().min(1),
-  "sourceAddress": zod.string().min(1),
-  "destinationAddress": zod.string().min(1),
-  "secretKey": zod.string().min(1),
-  "pollIntervalSeconds": zod.number().min(createWalletBodyPollIntervalSecondsMin).max(createWalletBodyPollIntervalSecondsMax).optional()
+  "label": zod.string().min(1).optional().describe('Optional friendly name. Auto-generated from address if omitted.'),
+  "secretKey": zod.string().min(1).describe('Pi wallet secret key (starts with S). Source address is derived from this.'),
+  "destinationAddress": zod.string().min(1).describe('Destination address to forward all incoming Pi to (e.g. OKX deposit address).')
 })
 
 export const CreateWalletResponse = zod.object({
@@ -70,7 +65,8 @@ export const CreateWalletResponse = zod.object({
   "lastError": zod.string().nullish(),
   "createdAt": zod.string(),
   "totalForwarded": zod.string().optional().describe('Total Pi forwarded by this wallet'),
-  "transferCount": zod.number().optional()
+  "transferCount": zod.number().optional(),
+  "currentBalance": zod.string().nullish().describe('Live Pi balance of the source wallet (returned on create\/update)')
 })
 
 
@@ -94,7 +90,8 @@ export const GetWalletResponse = zod.object({
   "lastError": zod.string().nullish(),
   "createdAt": zod.string(),
   "totalForwarded": zod.string().optional().describe('Total Pi forwarded by this wallet'),
-  "transferCount": zod.number().optional()
+  "transferCount": zod.number().optional(),
+  "currentBalance": zod.string().nullish().describe('Live Pi balance of the source wallet (returned on create\/update)')
 })
 
 
@@ -106,17 +103,12 @@ export const UpdateWalletParams = zod.object({
 })
 
 
-export const updateWalletBodyPollIntervalSecondsMin = 10;
-export const updateWalletBodyPollIntervalSecondsMax = 3600;
-
 
 
 export const UpdateWalletBody = zod.object({
   "label": zod.string().min(1).optional(),
-  "sourceAddress": zod.string().optional(),
-  "destinationAddress": zod.string().optional(),
-  "secretKey": zod.string().nullish(),
-  "pollIntervalSeconds": zod.number().min(updateWalletBodyPollIntervalSecondsMin).max(updateWalletBodyPollIntervalSecondsMax).optional()
+  "destinationAddress": zod.string().optional().describe('New destination address to forward Pi to.'),
+  "secretKey": zod.string().nullish().describe('New secret key. If provided, source address is re-derived automatically.')
 })
 
 export const UpdateWalletResponse = zod.object({
@@ -132,7 +124,8 @@ export const UpdateWalletResponse = zod.object({
   "lastError": zod.string().nullish(),
   "createdAt": zod.string(),
   "totalForwarded": zod.string().optional().describe('Total Pi forwarded by this wallet'),
-  "transferCount": zod.number().optional()
+  "transferCount": zod.number().optional(),
+  "currentBalance": zod.string().nullish().describe('Live Pi balance of the source wallet (returned on create\/update)')
 })
 
 
@@ -166,7 +159,8 @@ export const StartWalletMonitorResponse = zod.object({
   "lastError": zod.string().nullish(),
   "createdAt": zod.string(),
   "totalForwarded": zod.string().optional().describe('Total Pi forwarded by this wallet'),
-  "transferCount": zod.number().optional()
+  "transferCount": zod.number().optional(),
+  "currentBalance": zod.string().nullish().describe('Live Pi balance of the source wallet (returned on create\/update)')
 })
 
 
@@ -190,7 +184,8 @@ export const StopWalletMonitorResponse = zod.object({
   "lastError": zod.string().nullish(),
   "createdAt": zod.string(),
   "totalForwarded": zod.string().optional().describe('Total Pi forwarded by this wallet'),
-  "transferCount": zod.number().optional()
+  "transferCount": zod.number().optional(),
+  "currentBalance": zod.string().nullish().describe('Live Pi balance of the source wallet (returned on create\/update)')
 })
 
 
