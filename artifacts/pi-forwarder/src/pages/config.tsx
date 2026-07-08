@@ -156,12 +156,12 @@ export default function ConfigPage() {
                   name="destinationAddress"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Destination Address</FormLabel>
+                      <FormLabel>Destination Address (OKX or any Pi wallet)</FormLabel>
                       <FormControl>
-                        <Input placeholder="G..." className="font-mono bg-background" {...field} />
+                        <Input placeholder="Enter OKX Pi deposit address or any Pi wallet address" className="font-mono bg-background" {...field} />
                       </FormControl>
                       <FormDescription>
-                        The safe wallet address (e.g. your OKX deposit address) where funds should be sent.
+                        Your OKX Pi deposit address or any other Pi wallet address you want incoming Pi forwarded to. OKX addresses are fully supported.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
