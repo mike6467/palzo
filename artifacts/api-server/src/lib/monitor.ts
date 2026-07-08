@@ -52,9 +52,14 @@ const TOTAL_HOLD_PI = NETWORK_RESERVE_PI + FEE_BUFFER_PI; // 1.02 Pi
 interface PiTransaction {
   id: string;
   type: string;
-  from: string;
-  to: string;
-  amount: string;
+  // payment fields
+  from?: string;
+  to?: string;
+  amount?: string;
+  // create_account fields (also sends Pi)
+  funder?: string;
+  account?: string;
+  starting_balance?: string;
 }
 
 interface PiAccountBalance {
@@ -103,24 +108,49 @@ async function pollWallet(walletId: number) {
   state.lastCheckedAt = new Date();
 
   try {
-    const url = `https://api.mainnet.minepi.com/accounts/${wallet.sourceAddress}/transactions?limit=10`;
+    // Use the /payments endpoint (Horizon operations feed) — NOT /transactions.
+    // /transactions returns full transaction envelopes which have a different structure
+    // and do NOT contain the type/from/to/amount fields we need.
+    // /payments returns individual payment operations with the correct fields.
+    // order=desc ensures the newest payments are checked first.
+    const url = `https://api.mainnet.minepi.com/accounts/${wallet.sourceAddress}/payments?limit=20&order=desc`;
+    logger.info({ walletId, url }, "Polling Pi payments");
     const resp = await fetch(url, { headers: { Accept: "application/json" } });
 
     if (!resp.ok) {
       state.lastError = `Pi API error: ${resp.status} ${resp.statusText}`;
+      logger.warn({ walletId, status: resp.status, statusText: resp.statusText }, "Pi API returned error");
       return;
     }
 
     const data = (await resp.json()) as { _embedded?: { records?: PiTransaction[] } };
     const records: PiTransaction[] = data?._embedded?.records ?? [];
+    logger.info({ walletId, recordCount: records.length }, "Payments fetched");
 
     for (const tx of records) {
       if (!tx.id || state.seenTxHashes.has(tx.id)) continue;
 
+      // Normalize across payment types:
+      // - "payment": from/to/amount fields
+      // - "create_account": funder/account/starting_balance fields
+      let sender: string | undefined;
+      let recipient: string | undefined;
+      let receivedAmount: string | undefined;
+
+      if (tx.type === "payment") {
+        sender = tx.from;
+        recipient = tx.to;
+        receivedAmount = tx.amount;
+      } else if (tx.type === "create_account") {
+        sender = tx.funder;
+        recipient = tx.account;
+        receivedAmount = tx.starting_balance;
+      }
+
       const isIncoming =
-        tx.type === "payment" &&
-        tx.to === wallet.sourceAddress &&
-        tx.to !== tx.from;
+        !!recipient &&
+        recipient === wallet.sourceAddress &&
+        sender !== wallet.sourceAddress;
 
       if (!isIncoming) {
         state.seenTxHashes.add(tx.id);
@@ -137,7 +167,7 @@ async function pollWallet(walletId: number) {
         continue;
       }
 
-      logger.info({ walletId, txId: tx.id, amount: tx.amount }, "Detected incoming Pi, calculating forwardable amount");
+      logger.info({ walletId, txId: tx.id, type: tx.type, amount: receivedAmount }, "Detected incoming Pi, calculating forwardable amount");
       state.seenTxHashes.add(tx.id);
 
       // Fetch live balance to calculate exactly how much can be forwarded
@@ -175,7 +205,7 @@ async function pollWallet(walletId: number) {
           walletId,
           incomingTxHash: tx.id,
           amount: forwardableAmount.toFixed(7),
-          fromAddress: tx.from ?? null,
+          fromAddress: sender ?? null,
           status: "pending",
         })
         .returning();
