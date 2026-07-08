@@ -9,58 +9,65 @@ export interface HealthStatus {
   status: string;
 }
 
-export interface WalletConfig {
-  /**
-     * Pi wallet address to monitor (public key)
-     * @nullable
-     */
-  sourceAddress: string | null;
-  /**
-     * OKX Pi wallet address to forward to
-     * @nullable
-     */
-  destinationAddress: string | null;
-  /** Whether all required fields are set */
+export interface Wallet {
+  id: number;
+  /** Friendly name for this wallet */
+  label: string;
+  /** @nullable */
+  sourceAddress?: string | null;
+  /** @nullable */
+  destinationAddress?: string | null;
   isConfigured: boolean;
-  /** How often to poll for new transactions (seconds) */
+  hasSecretKey: boolean;
   pollIntervalSeconds: number;
-  /** Whether the secret key is stored */
-  hasSecretKey?: boolean;
+  monitorRunning: boolean;
+  /** @nullable */
+  lastCheckedAt?: string | null;
+  /** @nullable */
+  lastError?: string | null;
+  createdAt: string;
+  /** Total Pi forwarded by this wallet */
+  totalForwarded?: string;
+  transferCount?: number;
 }
 
-export interface WalletConfigInput {
-  /** Pi wallet address to monitor (public key) */
-  sourceAddress?: string;
-  /** OKX Pi wallet address to forward to */
-  destinationAddress?: string;
+export interface WalletInput {
+  /** @minLength 1 */
+  label: string;
+  /** @minLength 1 */
+  sourceAddress: string;
+  /** @minLength 1 */
+  destinationAddress: string;
+  /** @minLength 1 */
+  secretKey: string;
   /**
-     * Private key of source wallet for signing transfers
-     * @nullable
-     */
-  secretKey?: string | null;
-  /**
-     * How often to poll (seconds)
      * @minimum 10
      * @maximum 3600
      */
   pollIntervalSeconds?: number;
 }
 
-export interface MonitorStatus {
-  running: boolean;
+export interface WalletUpdate {
+  /** @minLength 1 */
+  label?: string;
+  sourceAddress?: string;
+  destinationAddress?: string;
+  /** @nullable */
+  secretKey?: string | null;
   /**
-     * ISO timestamp of last check
-     * @nullable
+     * @minimum 10
+     * @maximum 3600
      */
-  lastCheckedAt: string | null;
-  /**
-     * Last error message if any
-     * @nullable
-     */
-  lastError?: string | null;
-  /** Total Pi forwarded (as string to avoid float precision) */
-  totalForwarded: string;
+  pollIntervalSeconds?: number;
+}
+
+export interface MonitorSummary {
+  totalWallets: number;
+  runningWallets: number;
+  totalPiForwarded: string;
   totalTransactions: number;
+  successCount?: number;
+  failedCount?: number;
 }
 
 export type TransferStatus = typeof TransferStatus[keyof typeof TransferStatus];
@@ -74,19 +81,14 @@ export const TransferStatus = {
 
 export interface Transfer {
   id: number;
-  /** Hash of the incoming transaction */
+  walletId: number;
+  /** @nullable */
+  walletLabel?: string | null;
   incomingTxHash: string;
-  /**
-     * Hash of the forwarding transaction
-     * @nullable
-     */
+  /** @nullable */
   outgoingTxHash?: string | null;
-  /** Amount of Pi transferred */
   amount: string;
-  /**
-     * Who sent Pi to the source wallet
-     * @nullable
-     */
+  /** @nullable */
   fromAddress?: string | null;
   status: TransferStatus;
   /** @nullable */
@@ -111,6 +113,10 @@ export interface TransferStats {
 }
 
 export type ListTransfersParams = {
+/**
+ * Filter by wallet ID
+ */
+walletId?: number;
 limit?: number;
 offset?: number;
 };

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, transfersTable } from "@workspace/db";
+import { db, transfersTable, walletsTable } from "@workspace/db";
 import {
   ListTransfersQueryParams,
   GetTransferParams,
@@ -11,9 +11,11 @@ import { desc, count, sum, eq } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-function serializeTransfer(t: typeof transfersTable.$inferSelect) {
+function serializeTransfer(t: typeof transfersTable.$inferSelect & { walletLabel?: string | null }) {
   return {
     id: t.id,
+    walletId: t.walletId,
+    walletLabel: t.walletLabel ?? null,
     incomingTxHash: t.incomingTxHash,
     outgoingTxHash: t.outgoingTxHash ?? null,
     amount: t.amount?.toString() ?? "0",
@@ -29,11 +31,39 @@ router.get("/transfers", async (req, res): Promise<void> => {
   const qp = ListTransfersQueryParams.safeParse(req.query);
   const limit = qp.success ? (qp.data.limit ?? 50) : 50;
   const offset = qp.success ? (qp.data.offset ?? 0) : 0;
+  const walletId = qp.success ? qp.data.walletId : undefined;
 
-  const [totalResult, rows] = await Promise.all([
-    db.select({ total: count() }).from(transfersTable),
-    db.select().from(transfersTable).orderBy(desc(transfersTable.createdAt)).limit(limit).offset(offset),
-  ]);
+  const baseQuery = db
+    .select({
+      id: transfersTable.id,
+      walletId: transfersTable.walletId,
+      walletLabel: walletsTable.label,
+      incomingTxHash: transfersTable.incomingTxHash,
+      outgoingTxHash: transfersTable.outgoingTxHash,
+      amount: transfersTable.amount,
+      fromAddress: transfersTable.fromAddress,
+      status: transfersTable.status,
+      errorMessage: transfersTable.errorMessage,
+      createdAt: transfersTable.createdAt,
+      forwardedAt: transfersTable.forwardedAt,
+    })
+    .from(transfersTable)
+    .leftJoin(walletsTable, eq(transfersTable.walletId, walletsTable.id));
+
+  const countQuery = db.select({ total: count() }).from(transfersTable);
+
+  let rows, totalResult;
+  if (walletId !== undefined) {
+    [totalResult, rows] = await Promise.all([
+      countQuery.where(eq(transfersTable.walletId, walletId)),
+      baseQuery.where(eq(transfersTable.walletId, walletId)).orderBy(desc(transfersTable.createdAt)).limit(limit).offset(offset),
+    ]);
+  } else {
+    [totalResult, rows] = await Promise.all([
+      countQuery,
+      baseQuery.orderBy(desc(transfersTable.createdAt)).limit(limit).offset(offset),
+    ]);
+  }
 
   res.json(
     ListTransfersResponse.parse({
@@ -43,35 +73,39 @@ router.get("/transfers", async (req, res): Promise<void> => {
   );
 });
 
-router.get("/transfers/stats", async (req, res): Promise<void> => {
+router.get("/transfers/stats", async (_req, res): Promise<void> => {
   const [allStats, recentRows] = await Promise.all([
     db
-      .select({
-        status: transfersTable.status,
-        cnt: count(),
-        total: sum(transfersTable.amount),
-      })
+      .select({ status: transfersTable.status, cnt: count(), total: sum(transfersTable.amount) })
       .from(transfersTable)
       .groupBy(transfersTable.status),
-    db.select().from(transfersTable).orderBy(desc(transfersTable.createdAt)).limit(5),
+    db
+      .select({
+        id: transfersTable.id,
+        walletId: transfersTable.walletId,
+        walletLabel: walletsTable.label,
+        incomingTxHash: transfersTable.incomingTxHash,
+        outgoingTxHash: transfersTable.outgoingTxHash,
+        amount: transfersTable.amount,
+        fromAddress: transfersTable.fromAddress,
+        status: transfersTable.status,
+        errorMessage: transfersTable.errorMessage,
+        createdAt: transfersTable.createdAt,
+        forwardedAt: transfersTable.forwardedAt,
+      })
+      .from(transfersTable)
+      .leftJoin(walletsTable, eq(transfersTable.walletId, walletsTable.id))
+      .orderBy(desc(transfersTable.createdAt))
+      .limit(5),
   ]);
 
-  let successCount = 0;
-  let failedCount = 0;
-  let pendingCount = 0;
-  let totalPiForwarded = 0;
-
+  let successCount = 0, failedCount = 0, pendingCount = 0, totalPiForwarded = 0;
   for (const row of allStats) {
     const c = Number(row.cnt);
     const t = Number(row.total ?? 0);
-    if (row.status === "forwarded") {
-      successCount = c;
-      totalPiForwarded += t;
-    } else if (row.status === "failed") {
-      failedCount = c;
-    } else if (row.status === "pending") {
-      pendingCount = c;
-    }
+    if (row.status === "forwarded") { successCount = c; totalPiForwarded += t; }
+    else if (row.status === "failed") failedCount = c;
+    else if (row.status === "pending") pendingCount = c;
   }
 
   res.json(
@@ -89,18 +123,29 @@ router.get("/transfers/stats", async (req, res): Promise<void> => {
 router.get("/transfers/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = GetTransferParams.safeParse({ id: parseInt(raw, 10) });
-  if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
-  }
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
 
-  const [transfer] = await db.select().from(transfersTable).where(eq(transfersTable.id, params.data.id));
-  if (!transfer) {
-    res.status(404).json({ error: "Transfer not found" });
-    return;
-  }
+  const [row] = await db
+    .select({
+      id: transfersTable.id,
+      walletId: transfersTable.walletId,
+      walletLabel: walletsTable.label,
+      incomingTxHash: transfersTable.incomingTxHash,
+      outgoingTxHash: transfersTable.outgoingTxHash,
+      amount: transfersTable.amount,
+      fromAddress: transfersTable.fromAddress,
+      status: transfersTable.status,
+      errorMessage: transfersTable.errorMessage,
+      createdAt: transfersTable.createdAt,
+      forwardedAt: transfersTable.forwardedAt,
+    })
+    .from(transfersTable)
+    .leftJoin(walletsTable, eq(transfersTable.walletId, walletsTable.id))
+    .where(eq(transfersTable.id, params.data.id));
 
-  res.json(GetTransferResponse.parse(serializeTransfer(transfer)));
+  if (!row) { res.status(404).json({ error: "Transfer not found" }); return; }
+
+  res.json(GetTransferResponse.parse(serializeTransfer(row)));
 });
 
 export default router;

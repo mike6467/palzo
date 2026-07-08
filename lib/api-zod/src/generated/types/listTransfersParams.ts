@@ -7,6 +7,10 @@
  */
 
 export type ListTransfersParams = {
+/**
+ * Filter by wallet ID
+ */
+walletId?: number;
 limit?: number;
 offset?: number;
 };

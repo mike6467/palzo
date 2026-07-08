@@ -6,18 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface WalletConfigInput {
-  /** Pi wallet address to monitor (public key) */
+export interface WalletUpdate {
+  /** @minLength 1 */
+  label?: string;
   sourceAddress?: string;
-  /** OKX Pi wallet address to forward to */
   destinationAddress?: string;
-  /**
-     * Private key of source wallet for signing transfers
-     * @nullable
-     */
+  /** @nullable */
   secretKey?: string | null;
   /**
-     * How often to poll (seconds)
      * @minimum 10
      * @maximum 3600
      */

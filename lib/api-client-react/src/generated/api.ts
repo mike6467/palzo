@@ -22,12 +22,13 @@ import type {
 import type {
   HealthStatus,
   ListTransfersParams,
-  MonitorStatus,
+  MonitorSummary,
   Transfer,
   TransferList,
   TransferStats,
-  WalletConfig,
-  WalletConfigInput
+  Wallet,
+  WalletInput,
+  WalletUpdate
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -66,7 +67,6 @@ export const getHealthCheckUrl = () => {
 }
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const healthCheck = async ( options?: RequestInit): Promise<HealthStatus> => {
@@ -135,21 +135,20 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
-export const getGetConfigUrl = () => {
+export const getListWalletsUrl = () => {
 
 
 
 
-  return `/api/config`
+  return `/api/wallets`
 }
 
 /**
- * Returns current wallet configuration (no secrets returned)
- * @summary Get wallet configuration
+ * @summary List all monitored wallets
  */
-export const getConfig = async ( options?: RequestInit): Promise<WalletConfig> => {
+export const listWallets = async ( options?: RequestInit): Promise<Wallet[]> => {
 
-  return customFetch<WalletConfig>(getGetConfigUrl(),
+  return customFetch<Wallet[]>(getListWalletsUrl(),
   {
     ...options,
     method: 'GET'
@@ -162,45 +161,45 @@ export const getConfig = async ( options?: RequestInit): Promise<WalletConfig> =
 
 
 
-export const getGetConfigQueryKey = () => {
+export const getListWalletsQueryKey = () => {
     return [
-    `/api/config`
+    `/api/wallets`
     ] as const;
     }
 
 
-export const getGetConfigQueryOptions = <TData = Awaited<ReturnType<typeof getConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListWalletsQueryOptions = <TData = Awaited<ReturnType<typeof listWallets>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWallets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetConfigQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListWalletsQueryKey();
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getConfig>>> = ({ signal }) => getConfig({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listWallets>>> = ({ signal }) => listWallets({ signal, ...requestOptions });
 
 
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getConfig>>, TError, TData> & { queryKey: QueryKey }
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listWallets>>, TError, TData> & { queryKey: QueryKey }
 }
 
-export type GetConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getConfig>>>
-export type GetConfigQueryError = ErrorType<unknown>
+export type ListWalletsQueryResult = NonNullable<Awaited<ReturnType<typeof listWallets>>>
+export type ListWalletsQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get wallet configuration
+ * @summary List all monitored wallets
  */
 
-export function useGetConfig<TData = Awaited<ReturnType<typeof getConfig>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useListWallets<TData = Awaited<ReturnType<typeof listWallets>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWallets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetConfigQueryOptions(options)
+  const queryOptions = getListWalletsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -213,25 +212,174 @@ export function useGetConfig<TData = Awaited<ReturnType<typeof getConfig>>, TErr
 
 
 
-export const getUpdateConfigUrl = () => {
+export const getCreateWalletUrl = () => {
 
 
 
 
-  return `/api/config`
+  return `/api/wallets`
 }
 
 /**
- * @summary Update wallet configuration
+ * @summary Add a new wallet to monitor
  */
-export const updateConfig = async (walletConfigInput: WalletConfigInput, options?: RequestInit): Promise<WalletConfig> => {
+export const createWallet = async (walletInput: WalletInput, options?: RequestInit): Promise<Wallet> => {
 
-  return customFetch<WalletConfig>(getUpdateConfigUrl(),
+  return customFetch<Wallet>(getCreateWalletUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(walletInput)
+  }
+);}
+
+
+
+
+
+export const getCreateWalletMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWallet>>, TError,{data: BodyType<WalletInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createWallet>>, TError,{data: BodyType<WalletInput>}, TContext> => {
+
+const mutationKey = ['createWallet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createWallet>>, {data: BodyType<WalletInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createWallet(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateWalletMutationResult = NonNullable<Awaited<ReturnType<typeof createWallet>>>
+    export type CreateWalletMutationBody = BodyType<WalletInput>
+    export type CreateWalletMutationError = ErrorType<void>
+
+    /**
+ * @summary Add a new wallet to monitor
+ */
+export const useCreateWallet = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWallet>>, TError,{data: BodyType<WalletInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createWallet>>,
+        TError,
+        {data: BodyType<WalletInput>},
+        TContext
+      > => {
+      return useMutation(getCreateWalletMutationOptions(options));
+    }
+
+export const getGetWalletUrl = (id: number,) => {
+
+
+
+
+  return `/api/wallets/${id}`
+}
+
+/**
+ * @summary Get a wallet by ID
+ */
+export const getWallet = async (id: number, options?: RequestInit): Promise<Wallet> => {
+
+  return customFetch<Wallet>(getGetWalletUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWalletQueryKey = (id: number,) => {
+    return [
+    `/api/wallets/${id}`
+    ] as const;
+    }
+
+
+export const getGetWalletQueryOptions = <TData = Awaited<ReturnType<typeof getWallet>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWallet>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWalletQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWallet>>> = ({ signal }) => getWallet(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWallet>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWalletQueryResult = NonNullable<Awaited<ReturnType<typeof getWallet>>>
+export type GetWalletQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a wallet by ID
+ */
+
+export function useGetWallet<TData = Awaited<ReturnType<typeof getWallet>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWallet>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWalletQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateWalletUrl = (id: number,) => {
+
+
+
+
+  return `/api/wallets/${id}`
+}
+
+/**
+ * @summary Update a wallet's configuration
+ */
+export const updateWallet = async (id: number,
+    walletUpdate: WalletUpdate, options?: RequestInit): Promise<Wallet> => {
+
+  return customFetch<Wallet>(getUpdateWalletUrl(id),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(walletConfigInput)
+    body: JSON.stringify(walletUpdate)
   }
 );}
 
@@ -239,11 +387,11 @@ export const updateConfig = async (walletConfigInput: WalletConfigInput, options
 
 
 
-export const getUpdateConfigMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateConfig>>, TError,{data: BodyType<WalletConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof updateConfig>>, TError,{data: BodyType<WalletConfigInput>}, TContext> => {
+export const getUpdateWalletMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateWallet>>, TError,{id: number;data: BodyType<WalletUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateWallet>>, TError,{id: number;data: BodyType<WalletUpdate>}, TContext> => {
 
-const mutationKey = ['updateConfig'];
+const mutationKey = ['updateWallet'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -253,10 +401,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateConfig>>, {data: BodyType<WalletConfigInput>}> = (props) => {
-          const {data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateWallet>>, {id: number;data: BodyType<WalletUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
 
-          return  updateConfig(data,requestOptions)
+          return  updateWallet(id,data,requestOptions)
         }
 
 
@@ -266,39 +414,251 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type UpdateConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateConfig>>>
-    export type UpdateConfigMutationBody = BodyType<WalletConfigInput>
-    export type UpdateConfigMutationError = ErrorType<void>
+    export type UpdateWalletMutationResult = NonNullable<Awaited<ReturnType<typeof updateWallet>>>
+    export type UpdateWalletMutationBody = BodyType<WalletUpdate>
+    export type UpdateWalletMutationError = ErrorType<void>
 
     /**
- * @summary Update wallet configuration
+ * @summary Update a wallet's configuration
  */
-export const useUpdateConfig = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateConfig>>, TError,{data: BodyType<WalletConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+export const useUpdateWallet = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateWallet>>, TError,{id: number;data: BodyType<WalletUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
-        Awaited<ReturnType<typeof updateConfig>>,
+        Awaited<ReturnType<typeof updateWallet>>,
         TError,
-        {data: BodyType<WalletConfigInput>},
+        {id: number;data: BodyType<WalletUpdate>},
         TContext
       > => {
-      return useMutation(getUpdateConfigMutationOptions(options));
+      return useMutation(getUpdateWalletMutationOptions(options));
     }
 
-export const getGetMonitorStatusUrl = () => {
+export const getDeleteWalletUrl = (id: number,) => {
 
 
 
 
-  return `/api/monitor/status`
+  return `/api/wallets/${id}`
 }
 
 /**
- * Returns current monitor running state plus summary stats
- * @summary Get monitor status and stats
+ * @summary Remove a wallet
  */
-export const getMonitorStatus = async ( options?: RequestInit): Promise<MonitorStatus> => {
+export const deleteWallet = async (id: number, options?: RequestInit): Promise<void> => {
 
-  return customFetch<MonitorStatus>(getGetMonitorStatusUrl(),
+  return customFetch<void>(getDeleteWalletUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteWalletMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteWallet>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteWallet>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteWallet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteWallet>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteWallet(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteWalletMutationResult = NonNullable<Awaited<ReturnType<typeof deleteWallet>>>
+
+    export type DeleteWalletMutationError = ErrorType<void>
+
+    /**
+ * @summary Remove a wallet
+ */
+export const useDeleteWallet = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteWallet>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteWallet>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteWalletMutationOptions(options));
+    }
+
+export const getStartWalletMonitorUrl = (id: number,) => {
+
+
+
+
+  return `/api/wallets/${id}/start`
+}
+
+/**
+ * @summary Start monitoring a wallet
+ */
+export const startWalletMonitor = async (id: number, options?: RequestInit): Promise<Wallet> => {
+
+  return customFetch<Wallet>(getStartWalletMonitorUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getStartWalletMonitorMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startWalletMonitor>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startWalletMonitor>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['startWalletMonitor'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startWalletMonitor>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  startWalletMonitor(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartWalletMonitorMutationResult = NonNullable<Awaited<ReturnType<typeof startWalletMonitor>>>
+
+    export type StartWalletMonitorMutationError = ErrorType<void>
+
+    /**
+ * @summary Start monitoring a wallet
+ */
+export const useStartWalletMonitor = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startWalletMonitor>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startWalletMonitor>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getStartWalletMonitorMutationOptions(options));
+    }
+
+export const getStopWalletMonitorUrl = (id: number,) => {
+
+
+
+
+  return `/api/wallets/${id}/stop`
+}
+
+/**
+ * @summary Stop monitoring a wallet
+ */
+export const stopWalletMonitor = async (id: number, options?: RequestInit): Promise<Wallet> => {
+
+  return customFetch<Wallet>(getStopWalletMonitorUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getStopWalletMonitorMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stopWalletMonitor>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof stopWalletMonitor>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['stopWalletMonitor'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof stopWalletMonitor>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  stopWalletMonitor(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StopWalletMonitorMutationResult = NonNullable<Awaited<ReturnType<typeof stopWalletMonitor>>>
+
+    export type StopWalletMonitorMutationError = ErrorType<void>
+
+    /**
+ * @summary Stop monitoring a wallet
+ */
+export const useStopWalletMonitor = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stopWalletMonitor>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof stopWalletMonitor>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getStopWalletMonitorMutationOptions(options));
+    }
+
+export const getGetMonitorSummaryUrl = () => {
+
+
+
+
+  return `/api/monitor/summary`
+}
+
+/**
+ * @summary Get overall monitoring summary across all wallets
+ */
+export const getMonitorSummary = async ( options?: RequestInit): Promise<MonitorSummary> => {
+
+  return customFetch<MonitorSummary>(getGetMonitorSummaryUrl(),
   {
     ...options,
     method: 'GET'
@@ -311,45 +671,45 @@ export const getMonitorStatus = async ( options?: RequestInit): Promise<MonitorS
 
 
 
-export const getGetMonitorStatusQueryKey = () => {
+export const getGetMonitorSummaryQueryKey = () => {
     return [
-    `/api/monitor/status`
+    `/api/monitor/summary`
     ] as const;
     }
 
 
-export const getGetMonitorStatusQueryOptions = <TData = Awaited<ReturnType<typeof getMonitorStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMonitorStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetMonitorSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getMonitorSummary>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMonitorSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetMonitorStatusQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetMonitorSummaryQueryKey();
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMonitorStatus>>> = ({ signal }) => getMonitorStatus({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMonitorSummary>>> = ({ signal }) => getMonitorSummary({ signal, ...requestOptions });
 
 
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMonitorStatus>>, TError, TData> & { queryKey: QueryKey }
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMonitorSummary>>, TError, TData> & { queryKey: QueryKey }
 }
 
-export type GetMonitorStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getMonitorStatus>>>
-export type GetMonitorStatusQueryError = ErrorType<unknown>
+export type GetMonitorSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getMonitorSummary>>>
+export type GetMonitorSummaryQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get monitor status and stats
+ * @summary Get overall monitoring summary across all wallets
  */
 
-export function useGetMonitorStatus<TData = Awaited<ReturnType<typeof getMonitorStatus>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMonitorStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useGetMonitorSummary<TData = Awaited<ReturnType<typeof getMonitorSummary>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMonitorSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetMonitorStatusQueryOptions(options)
+  const queryOptions = getGetMonitorSummaryQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -361,148 +721,6 @@ export function useGetMonitorStatus<TData = Awaited<ReturnType<typeof getMonitor
 
 
 
-
-export const getStartMonitorUrl = () => {
-
-
-
-
-  return `/api/monitor/start`
-}
-
-/**
- * @summary Start the wallet monitor
- */
-export const startMonitor = async ( options?: RequestInit): Promise<MonitorStatus> => {
-
-  return customFetch<MonitorStatus>(getStartMonitorUrl(),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-
-
-export const getStartMonitorMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMonitor>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof startMonitor>>, TError,void, TContext> => {
-
-const mutationKey = ['startMonitor'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startMonitor>>, void> = () => {
-
-
-          return  startMonitor(requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type StartMonitorMutationResult = NonNullable<Awaited<ReturnType<typeof startMonitor>>>
-
-    export type StartMonitorMutationError = ErrorType<void>
-
-    /**
- * @summary Start the wallet monitor
- */
-export const useStartMonitor = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMonitor>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof startMonitor>>,
-        TError,
-        void,
-        TContext
-      > => {
-      return useMutation(getStartMonitorMutationOptions(options));
-    }
-
-export const getStopMonitorUrl = () => {
-
-
-
-
-  return `/api/monitor/stop`
-}
-
-/**
- * @summary Stop the wallet monitor
- */
-export const stopMonitor = async ( options?: RequestInit): Promise<MonitorStatus> => {
-
-  return customFetch<MonitorStatus>(getStopMonitorUrl(),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-
-
-export const getStopMonitorMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stopMonitor>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof stopMonitor>>, TError,void, TContext> => {
-
-const mutationKey = ['stopMonitor'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof stopMonitor>>, void> = () => {
-
-
-          return  stopMonitor(requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type StopMonitorMutationResult = NonNullable<Awaited<ReturnType<typeof stopMonitor>>>
-
-    export type StopMonitorMutationError = ErrorType<unknown>
-
-    /**
- * @summary Stop the wallet monitor
- */
-export const useStopMonitor = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stopMonitor>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof stopMonitor>>,
-        TError,
-        void,
-        TContext
-      > => {
-      return useMutation(getStopMonitorMutationOptions(options));
-    }
 
 export const getListTransfersUrl = (params?: ListTransfersParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -520,7 +738,7 @@ export const getListTransfersUrl = (params?: ListTransfersParams,) => {
 }
 
 /**
- * @summary List all transfer records
+ * @summary List transfer records
  */
 export const listTransfers = async (params?: ListTransfersParams, options?: RequestInit): Promise<TransferList> => {
 
@@ -567,7 +785,7 @@ export type ListTransfersQueryError = ErrorType<unknown>
 
 
 /**
- * @summary List all transfer records
+ * @summary List transfer records
  */
 
 export function useListTransfers<TData = Awaited<ReturnType<typeof listTransfers>>, TError = ErrorType<unknown>>(
@@ -597,8 +815,7 @@ export const getGetTransferStatsUrl = () => {
 }
 
 /**
- * Totals, counts, and recent activity
- * @summary Get transfer summary stats
+ * @summary Aggregate transfer stats across all wallets
  */
 export const getTransferStats = async ( options?: RequestInit): Promise<TransferStats> => {
 
@@ -645,7 +862,7 @@ export type GetTransferStatsQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get transfer summary stats
+ * @summary Aggregate transfer stats across all wallets
  */
 
 export function useGetTransferStats<TData = Awaited<ReturnType<typeof getTransferStats>>, TError = ErrorType<unknown>>(
@@ -675,7 +892,7 @@ export const getGetTransferUrl = (id: number,) => {
 }
 
 /**
- * @summary Get a single transfer record
+ * @summary Get a single transfer
  */
 export const getTransfer = async (id: number, options?: RequestInit): Promise<Transfer> => {
 
@@ -722,7 +939,7 @@ export type GetTransferQueryError = ErrorType<void>
 
 
 /**
- * @summary Get a single transfer record
+ * @summary Get a single transfer
  */
 
 export function useGetTransfer<TData = Awaited<ReturnType<typeof getTransfer>>, TError = ErrorType<void>>(

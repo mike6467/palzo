@@ -8,10 +8,11 @@
 
 export * from './healthStatus';
 export * from './listTransfersParams';
-export * from './monitorStatus';
+export * from './monitorSummary';
 export * from './transfer';
 export * from './transferList';
 export * from './transferStats';
 export * from './transferStatus';
-export * from './walletConfig';
-export * from './walletConfigInput';
+export * from './wallet';
+export * from './walletInput';
+export * from './walletUpdate';

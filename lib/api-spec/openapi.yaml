@@ -10,19 +10,16 @@ servers:
 tags:
   - name: health
     description: Health operations
-  - name: config
-    description: Wallet configuration
+  - name: wallets
+    description: Wallet management
   - name: transfers
-    description: Transfer history and monitoring
-  - name: monitor
-    description: Monitor controls
+    description: Transfer history
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -31,87 +28,171 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
-  /config:
+  /wallets:
     get:
-      operationId: getConfig
-      tags: [config]
-      summary: Get wallet configuration
-      description: Returns current wallet configuration (no secrets returned)
+      operationId: listWallets
+      tags: [wallets]
+      summary: List all monitored wallets
       responses:
         "200":
-          description: Config
+          description: List of wallets
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WalletConfig"
-    put:
-      operationId: updateConfig
-      tags: [config]
-      summary: Update wallet configuration
+                type: array
+                items:
+                  $ref: "#/components/schemas/Wallet"
+    post:
+      operationId: createWallet
+      tags: [wallets]
+      summary: Add a new wallet to monitor
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/WalletConfigInput"
+              $ref: "#/components/schemas/WalletInput"
       responses:
-        "200":
-          description: Updated config
+        "201":
+          description: Created wallet
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WalletConfig"
+                $ref: "#/components/schemas/Wallet"
         "400":
           description: Validation error
 
-  /monitor/status:
+  /wallets/{id}:
     get:
-      operationId: getMonitorStatus
-      tags: [monitor]
-      summary: Get monitor status and stats
-      description: Returns current monitor running state plus summary stats
+      operationId: getWallet
+      tags: [wallets]
+      summary: Get a wallet by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
       responses:
         "200":
-          description: Monitor status
+          description: Wallet
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MonitorStatus"
+                $ref: "#/components/schemas/Wallet"
+        "404":
+          description: Not found
+    put:
+      operationId: updateWallet
+      tags: [wallets]
+      summary: Update a wallet's configuration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WalletUpdate"
+      responses:
+        "200":
+          description: Updated wallet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+        "400":
+          description: Validation error
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteWallet
+      tags: [wallets]
+      summary: Remove a wallet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
 
-  /monitor/start:
+  /wallets/{id}/start:
     post:
-      operationId: startMonitor
-      tags: [monitor]
-      summary: Start the wallet monitor
+      operationId: startWalletMonitor
+      tags: [wallets]
+      summary: Start monitoring a wallet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
       responses:
         "200":
-          description: Monitor started
+          description: Wallet with updated monitor state
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MonitorStatus"
+                $ref: "#/components/schemas/Wallet"
         "400":
           description: Cannot start (missing config)
+        "404":
+          description: Not found
 
-  /monitor/stop:
+  /wallets/{id}/stop:
     post:
-      operationId: stopMonitor
-      tags: [monitor]
-      summary: Stop the wallet monitor
+      operationId: stopWalletMonitor
+      tags: [wallets]
+      summary: Stop monitoring a wallet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
       responses:
         "200":
-          description: Monitor stopped
+          description: Wallet with updated monitor state
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MonitorStatus"
+                $ref: "#/components/schemas/Wallet"
+        "404":
+          description: Not found
+
+  /monitor/summary:
+    get:
+      operationId: getMonitorSummary
+      tags: [wallets]
+      summary: Get overall monitoring summary across all wallets
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitorSummary"
 
   /transfers:
     get:
       operationId: listTransfers
       tags: [transfers]
-      summary: List all transfer records
+      summary: List transfer records
       parameters:
+        - name: walletId
+          in: query
+          schema:
+            type: integer
+          description: Filter by wallet ID
         - name: limit
           in: query
           schema:
@@ -134,11 +215,10 @@ paths:
     get:
       operationId: getTransferStats
       tags: [transfers]
-      summary: Get transfer summary stats
-      description: Totals, counts, and recent activity
+      summary: Aggregate transfer stats across all wallets
       responses:
         "200":
-          description: Transfer stats
+          description: Stats
           content:
             application/json:
               schema:
@@ -148,7 +228,7 @@ paths:
     get:
       operationId: getTransfer
       tags: [transfers]
-      summary: Get a single transfer record
+      summary: Get a single transfer
       parameters:
         - name: id
           in: path
@@ -157,7 +237,7 @@ paths:
             type: integer
       responses:
         "200":
-          description: Transfer record
+          description: Transfer
           content:
             application/json:
               schema:
@@ -169,86 +249,117 @@ components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
-    WalletConfig:
+    Wallet:
       type: object
-      required: [sourceAddress, destinationAddress, isConfigured, pollIntervalSeconds]
+      required: [id, label, isConfigured, hasSecretKey, pollIntervalSeconds, monitorRunning, createdAt]
       properties:
+        id:
+          type: integer
+        label:
+          type: string
+          description: Friendly name for this wallet
         sourceAddress:
           type: ["string", "null"]
-          description: Pi wallet address to monitor (public key)
         destinationAddress:
           type: ["string", "null"]
-          description: OKX Pi wallet address to forward to
         isConfigured:
           type: boolean
-          description: Whether all required fields are set
-        pollIntervalSeconds:
-          type: integer
-          description: How often to poll for new transactions (seconds)
         hasSecretKey:
           type: boolean
-          description: Whether the secret key is stored
+        pollIntervalSeconds:
+          type: integer
+        monitorRunning:
+          type: boolean
+        lastCheckedAt:
+          type: ["string", "null"]
+        lastError:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        totalForwarded:
+          type: string
+          description: Total Pi forwarded by this wallet
+        transferCount:
+          type: integer
 
-    WalletConfigInput:
+    WalletInput:
       type: object
+      required: [label, sourceAddress, destinationAddress, secretKey]
       properties:
+        label:
+          type: string
+          minLength: 1
         sourceAddress:
           type: string
-          description: Pi wallet address to monitor (public key)
+          minLength: 1
         destinationAddress:
           type: string
-          description: OKX Pi wallet address to forward to
+          minLength: 1
         secretKey:
-          type: ["string", "null"]
-          description: Private key of source wallet for signing transfers
+          type: string
+          minLength: 1
         pollIntervalSeconds:
           type: integer
           minimum: 10
           maximum: 3600
-          description: How often to poll (seconds)
 
-    MonitorStatus:
+    WalletUpdate:
       type: object
-      required: [running, lastCheckedAt, totalForwarded, totalTransactions]
       properties:
-        running:
-          type: boolean
-        lastCheckedAt:
-          type: ["string", "null"]
-          description: ISO timestamp of last check
-        lastError:
-          type: ["string", "null"]
-          description: Last error message if any
-        totalForwarded:
+        label:
           type: string
-          description: Total Pi forwarded (as string to avoid float precision)
+          minLength: 1
+        sourceAddress:
+          type: string
+        destinationAddress:
+          type: string
+        secretKey:
+          type: ["string", "null"]
+        pollIntervalSeconds:
+          type: integer
+          minimum: 10
+          maximum: 3600
+
+    MonitorSummary:
+      type: object
+      required: [totalWallets, runningWallets, totalPiForwarded, totalTransactions]
+      properties:
+        totalWallets:
+          type: integer
+        runningWallets:
+          type: integer
+        totalPiForwarded:
+          type: string
         totalTransactions:
+          type: integer
+        successCount:
+          type: integer
+        failedCount:
           type: integer
 
     Transfer:
       type: object
-      required: [id, incomingTxHash, amount, status, createdAt]
+      required: [id, walletId, incomingTxHash, amount, status, createdAt]
       properties:
         id:
           type: integer
+        walletId:
+          type: integer
+        walletLabel:
+          type: ["string", "null"]
         incomingTxHash:
           type: string
-          description: Hash of the incoming transaction
         outgoingTxHash:
           type: ["string", "null"]
-          description: Hash of the forwarding transaction
         amount:
           type: string
-          description: Amount of Pi transferred
         fromAddress:
           type: ["string", "null"]
-          description: Who sent Pi to the source wallet
         status:
           type: string
           enum: [pending, forwarded, failed]

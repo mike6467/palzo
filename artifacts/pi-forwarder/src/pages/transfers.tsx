@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { truncateHash } from "./dashboard";
 
 const PAGE_SIZE = 20;
@@ -51,12 +51,12 @@ export default function TransfersPage() {
     <div className="space-y-8 pb-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Transfer History</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Complete log of all intercepted and forwarded transactions.</p>
+        <p className="text-muted-foreground mt-1 text-sm">Complete log of all intercepted and forwarded transactions across all nodes.</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Transfer Log</CardTitle>
+          <CardTitle>Global Transfer Log</CardTitle>
           <CardDescription>Showing {transfers.length} of {total} records.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -64,6 +64,7 @@ export default function TransfersPage() {
             <TableHeader className="bg-accent/50">
               <TableRow>
                 <TableHead className="w-[180px]">Date/Time</TableHead>
+                <TableHead>Node</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>From</TableHead>
@@ -74,7 +75,7 @@ export default function TransfersPage() {
             <TableBody>
               {transfers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                     No transfers recorded yet.
                   </TableCell>
                 </TableRow>
@@ -84,7 +85,14 @@ export default function TransfersPage() {
                     <TableCell className="whitespace-nowrap text-muted-foreground">
                       {format(new Date(tx.createdAt), "yyyy-MM-dd HH:mm:ss")}
                     </TableCell>
-                    <TableCell className="font-bold">
+                    <TableCell>
+                      {tx.walletLabel ? (
+                        <Badge variant="outline" className="font-mono text-[10px] bg-card text-foreground">{tx.walletLabel}</Badge>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-bold text-primary">
                       {tx.amount} π
                     </TableCell>
                     <TableCell>

@@ -9,19 +9,14 @@ import type { TransferStatus } from './transferStatus';
 
 export interface Transfer {
   id: number;
-  /** Hash of the incoming transaction */
+  walletId: number;
+  /** @nullable */
+  walletLabel?: string | null;
   incomingTxHash: string;
-  /**
-     * Hash of the forwarding transaction
-     * @nullable
-     */
+  /** @nullable */
   outgoingTxHash?: string | null;
-  /** Amount of Pi transferred */
   amount: string;
-  /**
-     * Who sent Pi to the source wallet
-     * @nullable
-     */
+  /** @nullable */
   fromAddress?: string | null;
   status: TransferStatus;
   /** @nullable */

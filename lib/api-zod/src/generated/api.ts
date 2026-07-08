@@ -9,7 +9,6 @@ import * as zod from 'zod';
 
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -18,86 +17,204 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * Returns current wallet configuration (no secrets returned)
- * @summary Get wallet configuration
+ * @summary List all monitored wallets
  */
-export const GetConfigResponse = zod.object({
-  "sourceAddress": zod.string().nullable().describe('Pi wallet address to monitor (public key)'),
-  "destinationAddress": zod.string().nullable().describe('OKX Pi wallet address to forward to'),
-  "isConfigured": zod.boolean().describe('Whether all required fields are set'),
-  "pollIntervalSeconds": zod.number().describe('How often to poll for new transactions (seconds)'),
-  "hasSecretKey": zod.boolean().optional().describe('Whether the secret key is stored')
+export const ListWalletsResponseItem = zod.object({
+  "id": zod.number(),
+  "label": zod.string().describe('Friendly name for this wallet'),
+  "sourceAddress": zod.string().nullish(),
+  "destinationAddress": zod.string().nullish(),
+  "isConfigured": zod.boolean(),
+  "hasSecretKey": zod.boolean(),
+  "pollIntervalSeconds": zod.number(),
+  "monitorRunning": zod.boolean(),
+  "lastCheckedAt": zod.string().nullish(),
+  "lastError": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "totalForwarded": zod.string().optional().describe('Total Pi forwarded by this wallet'),
+  "transferCount": zod.number().optional()
+})
+export const ListWalletsResponse = zod.array(ListWalletsResponseItem)
+
+
+/**
+ * @summary Add a new wallet to monitor
+ */
+
+
+
+
+export const createWalletBodyPollIntervalSecondsMin = 10;
+export const createWalletBodyPollIntervalSecondsMax = 3600;
+
+
+
+export const CreateWalletBody = zod.object({
+  "label": zod.string().min(1),
+  "sourceAddress": zod.string().min(1),
+  "destinationAddress": zod.string().min(1),
+  "secretKey": zod.string().min(1),
+  "pollIntervalSeconds": zod.number().min(createWalletBodyPollIntervalSecondsMin).max(createWalletBodyPollIntervalSecondsMax).optional()
+})
+
+export const CreateWalletResponse = zod.object({
+  "id": zod.number(),
+  "label": zod.string().describe('Friendly name for this wallet'),
+  "sourceAddress": zod.string().nullish(),
+  "destinationAddress": zod.string().nullish(),
+  "isConfigured": zod.boolean(),
+  "hasSecretKey": zod.boolean(),
+  "pollIntervalSeconds": zod.number(),
+  "monitorRunning": zod.boolean(),
+  "lastCheckedAt": zod.string().nullish(),
+  "lastError": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "totalForwarded": zod.string().optional().describe('Total Pi forwarded by this wallet'),
+  "transferCount": zod.number().optional()
 })
 
 
 /**
- * @summary Update wallet configuration
+ * @summary Get a wallet by ID
  */
-export const updateConfigBodyPollIntervalSecondsMin = 10;
-export const updateConfigBodyPollIntervalSecondsMax = 3600;
-
-
-
-export const UpdateConfigBody = zod.object({
-  "sourceAddress": zod.string().optional().describe('Pi wallet address to monitor (public key)'),
-  "destinationAddress": zod.string().optional().describe('OKX Pi wallet address to forward to'),
-  "secretKey": zod.string().nullish().describe('Private key of source wallet for signing transfers'),
-  "pollIntervalSeconds": zod.number().min(updateConfigBodyPollIntervalSecondsMin).max(updateConfigBodyPollIntervalSecondsMax).optional().describe('How often to poll (seconds)')
+export const GetWalletParams = zod.object({
+  "id": zod.coerce.number()
 })
 
-export const UpdateConfigResponse = zod.object({
-  "sourceAddress": zod.string().nullable().describe('Pi wallet address to monitor (public key)'),
-  "destinationAddress": zod.string().nullable().describe('OKX Pi wallet address to forward to'),
-  "isConfigured": zod.boolean().describe('Whether all required fields are set'),
-  "pollIntervalSeconds": zod.number().describe('How often to poll for new transactions (seconds)'),
-  "hasSecretKey": zod.boolean().optional().describe('Whether the secret key is stored')
+export const GetWalletResponse = zod.object({
+  "id": zod.number(),
+  "label": zod.string().describe('Friendly name for this wallet'),
+  "sourceAddress": zod.string().nullish(),
+  "destinationAddress": zod.string().nullish(),
+  "isConfigured": zod.boolean(),
+  "hasSecretKey": zod.boolean(),
+  "pollIntervalSeconds": zod.number(),
+  "monitorRunning": zod.boolean(),
+  "lastCheckedAt": zod.string().nullish(),
+  "lastError": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "totalForwarded": zod.string().optional().describe('Total Pi forwarded by this wallet'),
+  "transferCount": zod.number().optional()
 })
 
 
 /**
- * Returns current monitor running state plus summary stats
- * @summary Get monitor status and stats
+ * @summary Update a wallet's configuration
  */
-export const GetMonitorStatusResponse = zod.object({
-  "running": zod.boolean(),
-  "lastCheckedAt": zod.string().nullable().describe('ISO timestamp of last check'),
-  "lastError": zod.string().nullish().describe('Last error message if any'),
-  "totalForwarded": zod.string().describe('Total Pi forwarded (as string to avoid float precision)'),
-  "totalTransactions": zod.number()
+export const UpdateWalletParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+export const updateWalletBodyPollIntervalSecondsMin = 10;
+export const updateWalletBodyPollIntervalSecondsMax = 3600;
+
+
+
+export const UpdateWalletBody = zod.object({
+  "label": zod.string().min(1).optional(),
+  "sourceAddress": zod.string().optional(),
+  "destinationAddress": zod.string().optional(),
+  "secretKey": zod.string().nullish(),
+  "pollIntervalSeconds": zod.number().min(updateWalletBodyPollIntervalSecondsMin).max(updateWalletBodyPollIntervalSecondsMax).optional()
+})
+
+export const UpdateWalletResponse = zod.object({
+  "id": zod.number(),
+  "label": zod.string().describe('Friendly name for this wallet'),
+  "sourceAddress": zod.string().nullish(),
+  "destinationAddress": zod.string().nullish(),
+  "isConfigured": zod.boolean(),
+  "hasSecretKey": zod.boolean(),
+  "pollIntervalSeconds": zod.number(),
+  "monitorRunning": zod.boolean(),
+  "lastCheckedAt": zod.string().nullish(),
+  "lastError": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "totalForwarded": zod.string().optional().describe('Total Pi forwarded by this wallet'),
+  "transferCount": zod.number().optional()
 })
 
 
 /**
- * @summary Start the wallet monitor
+ * @summary Remove a wallet
  */
-export const StartMonitorResponse = zod.object({
-  "running": zod.boolean(),
-  "lastCheckedAt": zod.string().nullable().describe('ISO timestamp of last check'),
-  "lastError": zod.string().nullish().describe('Last error message if any'),
-  "totalForwarded": zod.string().describe('Total Pi forwarded (as string to avoid float precision)'),
-  "totalTransactions": zod.number()
+export const DeleteWalletParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteWalletResponse = zod.void()
+
+
+/**
+ * @summary Start monitoring a wallet
+ */
+export const StartWalletMonitorParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const StartWalletMonitorResponse = zod.object({
+  "id": zod.number(),
+  "label": zod.string().describe('Friendly name for this wallet'),
+  "sourceAddress": zod.string().nullish(),
+  "destinationAddress": zod.string().nullish(),
+  "isConfigured": zod.boolean(),
+  "hasSecretKey": zod.boolean(),
+  "pollIntervalSeconds": zod.number(),
+  "monitorRunning": zod.boolean(),
+  "lastCheckedAt": zod.string().nullish(),
+  "lastError": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "totalForwarded": zod.string().optional().describe('Total Pi forwarded by this wallet'),
+  "transferCount": zod.number().optional()
 })
 
 
 /**
- * @summary Stop the wallet monitor
+ * @summary Stop monitoring a wallet
  */
-export const StopMonitorResponse = zod.object({
-  "running": zod.boolean(),
-  "lastCheckedAt": zod.string().nullable().describe('ISO timestamp of last check'),
-  "lastError": zod.string().nullish().describe('Last error message if any'),
-  "totalForwarded": zod.string().describe('Total Pi forwarded (as string to avoid float precision)'),
-  "totalTransactions": zod.number()
+export const StopWalletMonitorParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const StopWalletMonitorResponse = zod.object({
+  "id": zod.number(),
+  "label": zod.string().describe('Friendly name for this wallet'),
+  "sourceAddress": zod.string().nullish(),
+  "destinationAddress": zod.string().nullish(),
+  "isConfigured": zod.boolean(),
+  "hasSecretKey": zod.boolean(),
+  "pollIntervalSeconds": zod.number(),
+  "monitorRunning": zod.boolean(),
+  "lastCheckedAt": zod.string().nullish(),
+  "lastError": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "totalForwarded": zod.string().optional().describe('Total Pi forwarded by this wallet'),
+  "transferCount": zod.number().optional()
 })
 
 
 /**
- * @summary List all transfer records
+ * @summary Get overall monitoring summary across all wallets
+ */
+export const GetMonitorSummaryResponse = zod.object({
+  "totalWallets": zod.number(),
+  "runningWallets": zod.number(),
+  "totalPiForwarded": zod.string(),
+  "totalTransactions": zod.number(),
+  "successCount": zod.number().optional(),
+  "failedCount": zod.number().optional()
+})
+
+
+/**
+ * @summary List transfer records
  */
 export const listTransfersQueryLimitDefault = 50;
 export const listTransfersQueryOffsetDefault = 0;
 
 export const ListTransfersQueryParams = zod.object({
+  "walletId": zod.coerce.number().optional().describe('Filter by wallet ID'),
   "limit": zod.coerce.number().default(listTransfersQueryLimitDefault),
   "offset": zod.coerce.number().default(listTransfersQueryOffsetDefault)
 })
@@ -105,10 +222,12 @@ export const ListTransfersQueryParams = zod.object({
 export const ListTransfersResponse = zod.object({
   "transfers": zod.array(zod.object({
   "id": zod.number(),
-  "incomingTxHash": zod.string().describe('Hash of the incoming transaction'),
-  "outgoingTxHash": zod.string().nullish().describe('Hash of the forwarding transaction'),
-  "amount": zod.string().describe('Amount of Pi transferred'),
-  "fromAddress": zod.string().nullish().describe('Who sent Pi to the source wallet'),
+  "walletId": zod.number(),
+  "walletLabel": zod.string().nullish(),
+  "incomingTxHash": zod.string(),
+  "outgoingTxHash": zod.string().nullish(),
+  "amount": zod.string(),
+  "fromAddress": zod.string().nullish(),
   "status": zod.enum(['pending', 'forwarded', 'failed']),
   "errorMessage": zod.string().nullish(),
   "createdAt": zod.string(),
@@ -119,8 +238,7 @@ export const ListTransfersResponse = zod.object({
 
 
 /**
- * Totals, counts, and recent activity
- * @summary Get transfer summary stats
+ * @summary Aggregate transfer stats across all wallets
  */
 export const GetTransferStatsResponse = zod.object({
   "totalPiForwarded": zod.string(),
@@ -130,10 +248,12 @@ export const GetTransferStatsResponse = zod.object({
   "pendingCount": zod.number(),
   "recentTransfers": zod.array(zod.object({
   "id": zod.number(),
-  "incomingTxHash": zod.string().describe('Hash of the incoming transaction'),
-  "outgoingTxHash": zod.string().nullish().describe('Hash of the forwarding transaction'),
-  "amount": zod.string().describe('Amount of Pi transferred'),
-  "fromAddress": zod.string().nullish().describe('Who sent Pi to the source wallet'),
+  "walletId": zod.number(),
+  "walletLabel": zod.string().nullish(),
+  "incomingTxHash": zod.string(),
+  "outgoingTxHash": zod.string().nullish(),
+  "amount": zod.string(),
+  "fromAddress": zod.string().nullish(),
   "status": zod.enum(['pending', 'forwarded', 'failed']),
   "errorMessage": zod.string().nullish(),
   "createdAt": zod.string(),
@@ -143,7 +263,7 @@ export const GetTransferStatsResponse = zod.object({
 
 
 /**
- * @summary Get a single transfer record
+ * @summary Get a single transfer
  */
 export const GetTransferParams = zod.object({
   "id": zod.coerce.number()
@@ -151,10 +271,12 @@ export const GetTransferParams = zod.object({
 
 export const GetTransferResponse = zod.object({
   "id": zod.number(),
-  "incomingTxHash": zod.string().describe('Hash of the incoming transaction'),
-  "outgoingTxHash": zod.string().nullish().describe('Hash of the forwarding transaction'),
-  "amount": zod.string().describe('Amount of Pi transferred'),
-  "fromAddress": zod.string().nullish().describe('Who sent Pi to the source wallet'),
+  "walletId": zod.number(),
+  "walletLabel": zod.string().nullish(),
+  "incomingTxHash": zod.string(),
+  "outgoingTxHash": zod.string().nullish(),
+  "amount": zod.string(),
+  "fromAddress": zod.string().nullish(),
   "status": zod.enum(['pending', 'forwarded', 'failed']),
   "errorMessage": zod.string().nullish(),
   "createdAt": zod.string(),

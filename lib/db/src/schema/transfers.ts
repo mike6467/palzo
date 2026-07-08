@@ -1,9 +1,11 @@
 import { pgTable, text, serial, integer, timestamp, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { walletsTable } from "./wallets";
 
 export const transfersTable = pgTable("transfers", {
   id: serial("id").primaryKey(),
+  walletId: integer("wallet_id").notNull().references(() => walletsTable.id, { onDelete: "cascade" }),
   incomingTxHash: text("incoming_tx_hash").notNull().unique(),
   outgoingTxHash: text("outgoing_tx_hash"),
   amount: numeric("amount", { precision: 20, scale: 7 }).notNull(),

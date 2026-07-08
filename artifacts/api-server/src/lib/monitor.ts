@@ -1,8 +1,8 @@
-import { db, walletConfigTable, transfersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, walletsTable, transfersTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
 
-interface MonitorState {
+interface WalletMonitorState {
   running: boolean;
   lastCheckedAt: Date | null;
   lastError: string | null;
@@ -10,115 +10,34 @@ interface MonitorState {
   seenTxHashes: Set<string>;
 }
 
-const state: MonitorState = {
-  running: false,
-  lastCheckedAt: null,
-  lastError: null,
-  intervalHandle: null,
-  seenTxHashes: new Set(),
-};
+const states = new Map<number, WalletMonitorState>();
 
-export function getMonitorState() {
+function getOrCreateState(walletId: number): WalletMonitorState {
+  if (!states.has(walletId)) {
+    states.set(walletId, {
+      running: false,
+      lastCheckedAt: null,
+      lastError: null,
+      intervalHandle: null,
+      seenTxHashes: new Set(),
+    });
+  }
+  return states.get(walletId)!;
+}
+
+export function getWalletMonitorState(walletId: number) {
+  const s = states.get(walletId);
   return {
-    running: state.running,
-    lastCheckedAt: state.lastCheckedAt,
-    lastError: state.lastError,
+    running: s?.running ?? false,
+    lastCheckedAt: s?.lastCheckedAt ?? null,
+    lastError: s?.lastError ?? null,
   };
 }
 
-async function getConfig() {
-  const [cfg] = await db.select().from(walletConfigTable).where(eq(walletConfigTable.id, 1));
-  return cfg ?? null;
-}
-
-async function pollAndForward() {
-  const cfg = await getConfig();
-  if (!cfg || !cfg.sourceAddress || !cfg.destinationAddress || !cfg.secretKey) {
-    state.lastError = "Wallet not fully configured";
-    return;
-  }
-
-  state.lastCheckedAt = new Date();
-
-  try {
-    const url = `https://api.mainnet.minepi.com/accounts/${cfg.sourceAddress}/transactions?limit=10`;
-    const resp = await fetch(url, { headers: { Accept: "application/json" } });
-
-    if (!resp.ok) {
-      state.lastError = `Pi API error: ${resp.status} ${resp.statusText}`;
-      return;
-    }
-
-    const data = (await resp.json()) as { _embedded?: { records?: PiTransaction[] } };
-    const records: PiTransaction[] = data?._embedded?.records ?? [];
-
-    for (const tx of records) {
-      if (!tx.id || state.seenTxHashes.has(tx.id)) continue;
-
-      const isIncoming =
-        tx.type === "payment" &&
-        tx.to === cfg.sourceAddress &&
-        tx.to !== tx.from;
-
-      if (!isIncoming) {
-        state.seenTxHashes.add(tx.id);
-        continue;
-      }
-
-      const existing = await db
-        .select()
-        .from(transfersTable)
-        .where(eq(transfersTable.incomingTxHash, tx.id));
-
-      if (existing.length > 0) {
-        state.seenTxHashes.add(tx.id);
-        continue;
-      }
-
-      logger.info({ txId: tx.id, amount: tx.amount }, "Detected incoming Pi transfer, recording");
-
-      const [record] = await db
-        .insert(transfersTable)
-        .values({
-          incomingTxHash: tx.id,
-          amount: tx.amount ?? "0",
-          fromAddress: tx.from ?? null,
-          status: "pending",
-        })
-        .returning();
-
-      state.seenTxHashes.add(tx.id);
-
-      try {
-        const outTxHash = await forwardPi(
-          cfg.sourceAddress,
-          cfg.destinationAddress,
-          cfg.secretKey,
-          tx.amount ?? "0"
-        );
-
-        await db
-          .update(transfersTable)
-          .set({ status: "forwarded", outgoingTxHash: outTxHash, forwardedAt: new Date() })
-          .where(eq(transfersTable.id, record.id));
-
-        state.lastError = null;
-        logger.info({ txId: tx.id, outTxHash }, "Successfully forwarded Pi");
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        await db
-          .update(transfersTable)
-          .set({ status: "failed", errorMessage: msg })
-          .where(eq(transfersTable.id, record.id));
-        state.lastError = `Forward failed: ${msg}`;
-        logger.error({ err, txId: tx.id }, "Failed to forward Pi");
-      }
-    }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    state.lastError = `Poll error: ${msg}`;
-    logger.error({ err }, "Monitor poll error");
-  }
+export function getAllRunningWalletIds(): number[] {
+  return Array.from(states.entries())
+    .filter(([, s]) => s.running)
+    .map(([id]) => id);
 }
 
 interface PiTransaction {
@@ -135,51 +54,138 @@ async function forwardPi(
   _secretKey: string,
   _amount: string
 ): Promise<string> {
-  // Pi Network's mainnet SDK/API for signing and submitting transactions.
-  // The Pi SDK (pi-stellar-sdk or stellar-sdk) is used to build a payment operation
-  // on the Pi blockchain (Pi uses Stellar under the hood).
-  // This implementation uses the Stellar SDK pattern as Pi Network is Stellar-based.
-  //
-  // NOTE: To enable real forwarding, install stellar-sdk:
+  // Pi Network uses Stellar SDK for signing transactions.
+  // Install stellar-sdk to enable real forwarding:
   //   pnpm --filter @workspace/api-server add stellar-sdk
-  // Then replace this stub with actual Stellar payment transaction code.
-  //
-  // Stub: logs and simulates a successful forward for testing purposes.
-  logger.info({ _sourceAddress, _destinationAddress, _amount }, "Forwarding Pi (stub - install stellar-sdk to enable)");
-  const stubHash = `stub_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  return stubHash;
+  logger.info({ _sourceAddress, _destinationAddress, _amount }, "Forwarding Pi (stub — install stellar-sdk to enable real signing)");
+  return `stub_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
-export async function startMonitor(): Promise<void> {
+async function pollWallet(walletId: number) {
+  const [wallet] = await db.select().from(walletsTable).where(eq(walletsTable.id, walletId));
+  const state = getOrCreateState(walletId);
+
+  if (!wallet || !wallet.sourceAddress || !wallet.destinationAddress || !wallet.secretKey) {
+    state.lastError = "Wallet not fully configured";
+    return;
+  }
+
+  state.lastCheckedAt = new Date();
+
+  try {
+    const url = `https://api.mainnet.minepi.com/accounts/${wallet.sourceAddress}/transactions?limit=10`;
+    const resp = await fetch(url, { headers: { Accept: "application/json" } });
+
+    if (!resp.ok) {
+      state.lastError = `Pi API error: ${resp.status} ${resp.statusText}`;
+      return;
+    }
+
+    const data = (await resp.json()) as { _embedded?: { records?: PiTransaction[] } };
+    const records: PiTransaction[] = data?._embedded?.records ?? [];
+
+    for (const tx of records) {
+      if (!tx.id || state.seenTxHashes.has(tx.id)) continue;
+
+      const isIncoming =
+        tx.type === "payment" &&
+        tx.to === wallet.sourceAddress &&
+        tx.to !== tx.from;
+
+      if (!isIncoming) {
+        state.seenTxHashes.add(tx.id);
+        continue;
+      }
+
+      const existing = await db
+        .select()
+        .from(transfersTable)
+        .where(and(eq(transfersTable.walletId, walletId), eq(transfersTable.incomingTxHash, tx.id)));
+
+      if (existing.length > 0) {
+        state.seenTxHashes.add(tx.id);
+        continue;
+      }
+
+      logger.info({ walletId, txId: tx.id, amount: tx.amount }, "Detected incoming Pi, recording");
+
+      const [record] = await db
+        .insert(transfersTable)
+        .values({
+          walletId,
+          incomingTxHash: tx.id,
+          amount: tx.amount ?? "0",
+          fromAddress: tx.from ?? null,
+          status: "pending",
+        })
+        .returning();
+
+      state.seenTxHashes.add(tx.id);
+
+      try {
+        const outTxHash = await forwardPi(
+          wallet.sourceAddress,
+          wallet.destinationAddress,
+          wallet.secretKey,
+          tx.amount ?? "0"
+        );
+
+        await db
+          .update(transfersTable)
+          .set({ status: "forwarded", outgoingTxHash: outTxHash, forwardedAt: new Date() })
+          .where(eq(transfersTable.id, record.id));
+
+        state.lastError = null;
+        logger.info({ walletId, txId: tx.id, outTxHash }, "Successfully forwarded Pi");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await db
+          .update(transfersTable)
+          .set({ status: "failed", errorMessage: msg })
+          .where(eq(transfersTable.id, record.id));
+        state.lastError = `Forward failed: ${msg}`;
+        logger.error({ err, walletId, txId: tx.id }, "Failed to forward Pi");
+      }
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    state.lastError = `Poll error: ${msg}`;
+    logger.error({ err, walletId }, "Monitor poll error");
+  }
+}
+
+export async function startWalletMonitor(walletId: number): Promise<void> {
+  const state = getOrCreateState(walletId);
   if (state.running) return;
 
-  const cfg = await getConfig();
-  if (!cfg?.sourceAddress || !cfg?.destinationAddress || !cfg?.secretKey) {
-    throw new Error("Wallet not configured. Please set up source address, destination address, and secret key first.");
+  const [wallet] = await db.select().from(walletsTable).where(eq(walletsTable.id, walletId));
+  if (!wallet?.sourceAddress || !wallet?.destinationAddress || !wallet?.secretKey) {
+    throw new Error("Wallet not fully configured. Please set the source address, destination address, and secret key first.");
   }
 
   state.running = true;
   state.lastError = null;
 
-  const intervalMs = (cfg.pollIntervalSeconds ?? 30) * 1000;
+  const intervalMs = (wallet.pollIntervalSeconds ?? 30) * 1000;
 
-  await pollAndForward();
+  await pollWallet(walletId);
   state.intervalHandle = setInterval(() => {
-    pollAndForward().catch((err) => {
-      logger.error({ err }, "Unhandled monitor error");
+    pollWallet(walletId).catch((err) => {
+      logger.error({ err, walletId }, "Unhandled monitor error");
     });
   }, intervalMs);
 
-  logger.info({ intervalMs }, "Monitor started");
+  logger.info({ walletId, intervalMs }, "Wallet monitor started");
 }
 
-export function stopMonitor(): void {
-  if (!state.running) return;
+export function stopWalletMonitor(walletId: number): void {
+  const state = states.get(walletId);
+  if (!state?.running) return;
 
   if (state.intervalHandle) {
     clearInterval(state.intervalHandle);
     state.intervalHandle = null;
   }
   state.running = false;
-  logger.info("Monitor stopped");
+  logger.info({ walletId }, "Wallet monitor stopped");
 }

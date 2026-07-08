@@ -4,7 +4,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import Dashboard from "@/pages/dashboard";
-import ConfigPage from "@/pages/config";
+import WalletNew from "@/pages/wallet-new";
+import WalletDetail from "@/pages/wallet-detail";
 import TransfersPage from "@/pages/transfers";
 import NotFound from "@/pages/not-found";
 
@@ -15,7 +16,8 @@ function Router() {
     <Layout>
       <Switch>
         <Route path="/" component={Dashboard} />
-        <Route path="/config" component={ConfigPage} />
+        <Route path="/wallets/new" component={WalletNew} />
+        <Route path="/wallets/:id" component={WalletDetail} />
         <Route path="/transfers" component={TransfersPage} />
         <Route component={NotFound} />
       </Switch>
