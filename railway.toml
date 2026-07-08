@@ -3,6 +3,7 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
+preDeployCommand = "pnpm --filter @workspace/db run push-force"
 startCommand = "./docker-entrypoint.sh"
 healthcheckPath = "/api/healthz"
 healthcheckTimeout = 30
