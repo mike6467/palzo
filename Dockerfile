@@ -1,5 +1,4 @@
-# Single-stage build — keeps pnpm workspace symlinks intact so drizzle-kit
-# is available for migrations at runtime.
+# Single-stage build — migrations run programmatically at server startup
 FROM node:24-slim
 
 RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
@@ -20,7 +19,7 @@ COPY artifacts/mockup-sandbox/package.json ./artifacts/mockup-sandbox/
 
 RUN pnpm install --frozen-lockfile
 
-# Copy the rest of the source
+# Copy source code
 COPY . .
 
 # Build frontend then API server
