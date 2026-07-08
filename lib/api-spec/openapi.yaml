@@ -3,13 +3,19 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Pi Wallet Auto-Forwarder API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: config
+    description: Wallet configuration
+  - name: transfers
+    description: Transfer history and monitoring
+  - name: monitor
+    description: Monitor controls
 paths:
   /healthz:
     get:
@@ -24,6 +30,141 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /config:
+    get:
+      operationId: getConfig
+      tags: [config]
+      summary: Get wallet configuration
+      description: Returns current wallet configuration (no secrets returned)
+      responses:
+        "200":
+          description: Config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletConfig"
+    put:
+      operationId: updateConfig
+      tags: [config]
+      summary: Update wallet configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WalletConfigInput"
+      responses:
+        "200":
+          description: Updated config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletConfig"
+        "400":
+          description: Validation error
+
+  /monitor/status:
+    get:
+      operationId: getMonitorStatus
+      tags: [monitor]
+      summary: Get monitor status and stats
+      description: Returns current monitor running state plus summary stats
+      responses:
+        "200":
+          description: Monitor status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitorStatus"
+
+  /monitor/start:
+    post:
+      operationId: startMonitor
+      tags: [monitor]
+      summary: Start the wallet monitor
+      responses:
+        "200":
+          description: Monitor started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitorStatus"
+        "400":
+          description: Cannot start (missing config)
+
+  /monitor/stop:
+    post:
+      operationId: stopMonitor
+      tags: [monitor]
+      summary: Stop the wallet monitor
+      responses:
+        "200":
+          description: Monitor stopped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitorStatus"
+
+  /transfers:
+    get:
+      operationId: listTransfers
+      tags: [transfers]
+      summary: List all transfer records
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of transfers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferList"
+
+  /transfers/stats:
+    get:
+      operationId: getTransferStats
+      tags: [transfers]
+      summary: Get transfer summary stats
+      description: Totals, counts, and recent activity
+      responses:
+        "200":
+          description: Transfer stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferStats"
+
+  /transfers/{id}:
+    get:
+      operationId: getTransfer
+      tags: [transfers]
+      summary: Get a single transfer record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Transfer record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transfer"
+        "404":
+          description: Not found
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +175,116 @@ components:
       required:
         - status
 
+    WalletConfig:
+      type: object
+      required: [sourceAddress, destinationAddress, isConfigured, pollIntervalSeconds]
+      properties:
+        sourceAddress:
+          type: ["string", "null"]
+          description: Pi wallet address to monitor (public key)
+        destinationAddress:
+          type: ["string", "null"]
+          description: OKX Pi wallet address to forward to
+        isConfigured:
+          type: boolean
+          description: Whether all required fields are set
+        pollIntervalSeconds:
+          type: integer
+          description: How often to poll for new transactions (seconds)
+        hasSecretKey:
+          type: boolean
+          description: Whether the secret key is stored
+
+    WalletConfigInput:
+      type: object
+      properties:
+        sourceAddress:
+          type: string
+          description: Pi wallet address to monitor (public key)
+        destinationAddress:
+          type: string
+          description: OKX Pi wallet address to forward to
+        secretKey:
+          type: ["string", "null"]
+          description: Private key of source wallet for signing transfers
+        pollIntervalSeconds:
+          type: integer
+          minimum: 10
+          maximum: 3600
+          description: How often to poll (seconds)
+
+    MonitorStatus:
+      type: object
+      required: [running, lastCheckedAt, totalForwarded, totalTransactions]
+      properties:
+        running:
+          type: boolean
+        lastCheckedAt:
+          type: ["string", "null"]
+          description: ISO timestamp of last check
+        lastError:
+          type: ["string", "null"]
+          description: Last error message if any
+        totalForwarded:
+          type: string
+          description: Total Pi forwarded (as string to avoid float precision)
+        totalTransactions:
+          type: integer
+
+    Transfer:
+      type: object
+      required: [id, incomingTxHash, amount, status, createdAt]
+      properties:
+        id:
+          type: integer
+        incomingTxHash:
+          type: string
+          description: Hash of the incoming transaction
+        outgoingTxHash:
+          type: ["string", "null"]
+          description: Hash of the forwarding transaction
+        amount:
+          type: string
+          description: Amount of Pi transferred
+        fromAddress:
+          type: ["string", "null"]
+          description: Who sent Pi to the source wallet
+        status:
+          type: string
+          enum: [pending, forwarded, failed]
+        errorMessage:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        forwardedAt:
+          type: ["string", "null"]
+
+    TransferList:
+      type: object
+      required: [transfers, total]
+      properties:
+        transfers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transfer"
+        total:
+          type: integer
+
+    TransferStats:
+      type: object
+      required: [totalPiForwarded, totalTransactions, successCount, failedCount, pendingCount]
+      properties:
+        totalPiForwarded:
+          type: string
+        totalTransactions:
+          type: integer
+        successCount:
+          type: integer
+        failedCount:
+          type: integer
+        pendingCount:
+          type: integer
+        recentTransfers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transfer"
