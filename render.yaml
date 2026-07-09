@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: palzo
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: oregon
+    plan: starter          # $7/month — keeps the process alive 24/7
+    envVars:
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: palzo-db
+          property: connectionString
+
+databases:
+  - name: palzo-db
+    databaseName: railway
+    region: oregon
+    plan: starter          # free 90-day trial, then $7/month
