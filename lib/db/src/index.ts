@@ -16,14 +16,15 @@ if (!process.env.DATABASE_URL) {
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle(pool, { schema });
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 /**
  * Run SQL migrations from the migrations folder.
  * Safe to call on every startup — drizzle tracks which migrations have run.
+ *
+ * Uses process.cwd() so the path resolves correctly whether the code is run
+ * directly from source or bundled by esbuild into a dist/ directory.
  */
 export async function runMigrations(): Promise<void> {
-  const migrationsFolder = path.resolve(__dirname, "../migrations");
+  const migrationsFolder = path.resolve(process.cwd(), "lib/db/migrations");
   await migrate(db, { migrationsFolder });
 }
 
