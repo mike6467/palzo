@@ -25,7 +25,12 @@ export const db = drizzle(pool, { schema });
  */
 export async function runMigrations(): Promise<void> {
   const migrationsFolder = path.resolve(process.cwd(), "lib/db/migrations");
-  await migrate(db, { migrationsFolder });
+  // Use public schema for migration tracking — Railway restricts CREATE SCHEMA
+  await migrate(db, {
+    migrationsFolder,
+    migrationsSchema: "public",
+    migrationsTable: "__drizzle_migrations",
+  });
 }
 
 export * from "./schema";
