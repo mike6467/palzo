@@ -46,6 +46,8 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
+- Do NOT run `drizzle-kit push` in this project. Migrations are applied by a custom runner (`lib/db/src/index.ts` `runMigrations()`) tracked via a `__migrations` table, driven by `lib/db/migrations/meta/_journal.json`. It runs automatically on every `api-server` startup. Using `drizzle-kit push` creates tables without recording them in `__migrations`, causing the next startup's migration run to fail with "relation already exists".
+
 - Hand-written SQL migrations in `lib/db/migrations` are run via a custom runner (`runMigrations` in `lib/db/src/index.ts`), not `drizzle-kit migrate`. Any `DO $ ... END $;` block must use double dollar-quoting (`DO $ ... END $;`) — Postgres rejects single `# PiOps — Pi Wallet Auto-Forwarder
 
 A dashboard for monitoring Pi Network wallets and automatically forwarding incoming funds to a destination address.
