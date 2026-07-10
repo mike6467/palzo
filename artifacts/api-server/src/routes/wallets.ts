@@ -135,7 +135,7 @@ router.post("/wallets", async (req, res): Promise<void> => {
       destinationAddress,
       secretKey,
       sponsorSecretKey: sponsorSecretKey || null,
-      pollIntervalSeconds: 5, // poll every 5s for near-instant forwarding
+      pollIntervalSeconds: 3, // poll every 3s for near-instant forwarding
       isConfigured: true,
     })
     .returning();

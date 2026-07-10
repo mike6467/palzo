@@ -739,7 +739,7 @@ export async function startWalletMonitor(walletId: number): Promise<void> {
   state.running = true;
   state.lastError = null;
 
-  const intervalMs = (wallet.pollIntervalSeconds ?? 10) * 1000;
+  const intervalMs = (wallet.pollIntervalSeconds ?? 3) * 1000;
 
   await pollWallet(walletId);
   await scanForLockedBalances(walletId);
