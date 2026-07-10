@@ -1,2 +1,4 @@
 - [Pi Horizon claim predicates](pi-locked-balance-predicates.md) — parsing gotchas for Stellar/Pi claimable-balance unlock predicates (bare vs `not`-wrapped `abs_before`, epoch-seconds vs RFC3339).
 - [drizzle-kit generate quirk](drizzle-kit-generate-quirk.md) — `drizzle-kit generate` failed with a bad concatenated path in this repo; migrations were hand-written instead.
+- [Drizzle dollar-quoting](drizzle-dollar-quoting.md) — custom SQL migration runners need valid `$` (not `- [Pi Horizon claim predicates](pi-locked-balance-predicates.md) — parsing gotchas for Stellar/Pi claimable-balance unlock predicates (bare vs `not`-wrapped `abs_before`, epoch-seconds vs RFC3339).
+) dollar-quoting in `DO` blocks or Postgres rejects them.
