@@ -12,7 +12,16 @@ interface WalletMonitorState {
   lastError: string | null;
   intervalHandle: NodeJS.Timeout | null;
   seenTxHashes: Set<string>;
+  // Skip actual polling until this timestamp — set after a 429 so we back off
+  // instead of continuing to hammer the API on every tick.
+  backoffUntilMs: number;
+  consecutiveRateLimits: number;
 }
+
+// After a 429, back off exponentially (capped) before hitting this wallet's
+// endpoint again, instead of retrying on the very next fixed-interval tick.
+const RATE_LIMIT_BASE_BACKOFF_MS = 2_000;
+const RATE_LIMIT_MAX_BACKOFF_MS = 60_000;
 
 const states = new Map<number, WalletMonitorState>();
 
@@ -45,6 +54,8 @@ function getOrCreateState(walletId: number): WalletMonitorState {
       lastError: null,
       intervalHandle: null,
       seenTxHashes: new Set(),
+      backoffUntilMs: 0,
+      consecutiveRateLimits: 0,
     });
   }
   return states.get(walletId)!;
@@ -583,6 +594,12 @@ async function pollWallet(walletId: number) {
 
   state.lastCheckedAt = new Date();
 
+  // If we recently got rate-limited on this wallet, skip the actual HTTP call
+  // until the backoff window elapses — cheap no-op instead of hammering the API.
+  if (Date.now() < state.backoffUntilMs) {
+    return;
+  }
+
   try {
     // Use the /payments endpoint (Horizon operations feed) — NOT /transactions.
     // /transactions returns full transaction envelopes which have a different structure
@@ -595,9 +612,23 @@ async function pollWallet(walletId: number) {
 
     if (!resp.ok) {
       state.lastError = `Pi API error: ${resp.status} ${resp.statusText}`;
-      logger.warn({ walletId, status: resp.status, statusText: resp.statusText }, "Pi API returned error");
+      if (resp.status === 429) {
+        state.consecutiveRateLimits += 1;
+        const backoffMs = Math.min(
+          RATE_LIMIT_BASE_BACKOFF_MS * 2 ** (state.consecutiveRateLimits - 1),
+          RATE_LIMIT_MAX_BACKOFF_MS
+        );
+        state.backoffUntilMs = Date.now() + backoffMs;
+        logger.warn({ walletId, backoffMs, consecutiveRateLimits: state.consecutiveRateLimits }, "Pi API rate-limited — backing off");
+      } else {
+        logger.warn({ walletId, status: resp.status, statusText: resp.statusText }, "Pi API returned error");
+      }
       return;
     }
+
+    // Successful response — clear any prior rate-limit backoff.
+    state.consecutiveRateLimits = 0;
+    state.backoffUntilMs = 0;
 
     const data = (await resp.json()) as { _embedded?: { records?: PiTransaction[] } };
     const records: PiTransaction[] = data?._embedded?.records ?? [];
