@@ -114,6 +114,25 @@ export interface LockedBalance {
   createdAt: string;
   /** @nullable */
   claimedAt?: string | null;
+  /**
+     * Friendly label of the owning wallet (populated on cross-wallet listings)
+     * @nullable
+     */
+  walletLabel?: string | null;
+}
+
+export interface LockedBalanceSummary {
+  /** Locked balances still waiting for their unlock time */
+  monitoringCount: number;
+  /** Locked balances currently mid-claim */
+  claimingCount: number;
+  claimedCount: number;
+  failedCount: number;
+  expiredCount: number;
+  /** Sum of amounts for balances still monitoring or claiming */
+  totalPendingAmount: string;
+  /** Sum of amounts for balances already claimed */
+  totalClaimedAmount: string;
 }
 
 export type TransferStatus = typeof TransferStatus[keyof typeof TransferStatus];

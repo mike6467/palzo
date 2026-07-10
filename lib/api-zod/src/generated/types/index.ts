@@ -10,6 +10,7 @@ export * from './healthStatus';
 export * from './listTransfersParams';
 export * from './lockedBalance';
 export * from './lockedBalanceStatus';
+export * from './lockedBalanceSummary';
 export * from './monitorSummary';
 export * from './transfer';
 export * from './transferList';

@@ -23,6 +23,7 @@ import type {
   HealthStatus,
   ListTransfersParams,
   LockedBalance,
+  LockedBalanceSummary,
   MonitorSummary,
   Transfer,
   TransferList,
@@ -788,6 +789,160 @@ export function useGetMonitorSummary<TData = Awaited<ReturnType<typeof getMonito
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetMonitorSummaryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListLockedBalancesUrl = () => {
+
+
+
+
+  return `/api/locked-balances`
+}
+
+/**
+ * @summary List locked (claimable) Pi balances across all wallets, newest first
+ */
+export const listLockedBalances = async ( options?: RequestInit): Promise<LockedBalance[]> => {
+
+  return customFetch<LockedBalance[]>(getListLockedBalancesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListLockedBalancesQueryKey = () => {
+    return [
+    `/api/locked-balances`
+    ] as const;
+    }
+
+
+export const getListLockedBalancesQueryOptions = <TData = Awaited<ReturnType<typeof listLockedBalances>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLockedBalances>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListLockedBalancesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listLockedBalances>>> = ({ signal }) => listLockedBalances({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listLockedBalances>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListLockedBalancesQueryResult = NonNullable<Awaited<ReturnType<typeof listLockedBalances>>>
+export type ListLockedBalancesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List locked (claimable) Pi balances across all wallets, newest first
+ */
+
+export function useListLockedBalances<TData = Awaited<ReturnType<typeof listLockedBalances>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLockedBalances>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListLockedBalancesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetLockedBalanceSummaryUrl = () => {
+
+
+
+
+  return `/api/monitor/locked-summary`
+}
+
+/**
+ * @summary Get aggregate locked-Pi (claimable balance) monitoring stats across all wallets
+ */
+export const getLockedBalanceSummary = async ( options?: RequestInit): Promise<LockedBalanceSummary> => {
+
+  return customFetch<LockedBalanceSummary>(getGetLockedBalanceSummaryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLockedBalanceSummaryQueryKey = () => {
+    return [
+    `/api/monitor/locked-summary`
+    ] as const;
+    }
+
+
+export const getGetLockedBalanceSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getLockedBalanceSummary>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLockedBalanceSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLockedBalanceSummaryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLockedBalanceSummary>>> = ({ signal }) => getLockedBalanceSummary({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLockedBalanceSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLockedBalanceSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getLockedBalanceSummary>>>
+export type GetLockedBalanceSummaryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get aggregate locked-Pi (claimable balance) monitoring stats across all wallets
+ */
+
+export function useGetLockedBalanceSummary<TData = Awaited<ReturnType<typeof getLockedBalanceSummary>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLockedBalanceSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLockedBalanceSummaryQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

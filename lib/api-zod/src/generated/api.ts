@@ -214,7 +214,8 @@ export const GetLockedBalancesResponseItem = zod.object({
   "claimTxHash": zod.string().nullish(),
   "errorMessage": zod.string().nullish(),
   "createdAt": zod.string(),
-  "claimedAt": zod.string().nullish()
+  "claimedAt": zod.string().nullish(),
+  "walletLabel": zod.string().nullish().describe('Friendly label of the owning wallet (populated on cross-wallet listings)')
 })
 export const GetLockedBalancesResponse = zod.array(GetLockedBalancesResponseItem)
 
@@ -229,6 +230,39 @@ export const GetMonitorSummaryResponse = zod.object({
   "totalTransactions": zod.number(),
   "successCount": zod.number().optional(),
   "failedCount": zod.number().optional()
+})
+
+
+/**
+ * @summary List locked (claimable) Pi balances across all wallets, newest first
+ */
+export const ListLockedBalancesResponseItem = zod.object({
+  "id": zod.number(),
+  "walletId": zod.number(),
+  "balanceId": zod.string().describe('Horizon claimable balance ID'),
+  "amount": zod.string(),
+  "unlockAt": zod.string().nullish().describe('Time the lockup becomes claimable (ISO 8601)'),
+  "status": zod.enum(['monitoring', 'claiming', 'claimed', 'failed', 'expired']),
+  "claimTxHash": zod.string().nullish(),
+  "errorMessage": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "claimedAt": zod.string().nullish(),
+  "walletLabel": zod.string().nullish().describe('Friendly label of the owning wallet (populated on cross-wallet listings)')
+})
+export const ListLockedBalancesResponse = zod.array(ListLockedBalancesResponseItem)
+
+
+/**
+ * @summary Get aggregate locked-Pi (claimable balance) monitoring stats across all wallets
+ */
+export const GetLockedBalanceSummaryResponse = zod.object({
+  "monitoringCount": zod.number().describe('Locked balances still waiting for their unlock time'),
+  "claimingCount": zod.number().describe('Locked balances currently mid-claim'),
+  "claimedCount": zod.number(),
+  "failedCount": zod.number(),
+  "expiredCount": zod.number(),
+  "totalPendingAmount": zod.string().describe('Sum of amounts for balances still monitoring or claiming'),
+  "totalClaimedAmount": zod.string().describe('Sum of amounts for balances already claimed')
 })
 
 

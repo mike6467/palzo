@@ -1,26 +1,64 @@
+import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Play, Square, Activity, ArrowRight, ShieldAlert, CheckCircle2, XCircle, Clock, Plus, Wifi } from "lucide-react";
+import { Play, Square, Activity, ArrowRight, ShieldAlert, CheckCircle2, XCircle, Clock, Plus, Wifi, Zap, Lock } from "lucide-react";
 import {
   useListWallets,
   useGetMonitorSummary,
   useGetTransferStats,
   useStartWalletMonitor,
   useStopWalletMonitor,
+  useListLockedBalances,
+  useGetLockedBalanceSummary,
   getListWalletsQueryKey,
   getGetMonitorSummaryQueryKey,
   getGetTransferStatsQueryKey,
+  getListLockedBalancesQueryKey,
+  getGetLockedBalanceSummaryQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
 
 export function truncateHash(hash: string | null | undefined) {
   if (!hash) return "-";
   if (hash.length <= 12) return hash;
   return `${hash.slice(0, 6)}...${hash.slice(-6)}`;
+}
+
+export function LockedBalanceStatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    monitoring: "text-yellow-500 border-yellow-500/30",
+    claiming: "text-blue-400 border-blue-400/30 animate-pulse",
+    claimed: "text-green-500 border-green-500/30",
+    failed: "text-destructive border-destructive/30",
+    expired: "text-muted-foreground border-muted-foreground/30",
+  };
+  return (
+    <Badge variant="outline" className={styles[status] ?? ""}>
+      {status}
+    </Badge>
+  );
+}
+
+export function LockedBalanceCountdown({ unlockAt }: { unlockAt: string | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(t);
+  }, []);
+  if (!unlockAt) return <span className="text-muted-foreground">unknown</span>;
+  const msLeft = new Date(unlockAt).getTime() - now;
+  if (msLeft <= 0) return <span className="text-primary font-bold">unlocking now…</span>;
+  const totalSeconds = Math.ceil(msLeft / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const label = h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`;
+  return <span className={msLeft <= 30_000 ? "text-primary font-bold" : ""}>{label}</span>;
 }
 
 export default function Dashboard() {
@@ -36,6 +74,14 @@ export default function Dashboard() {
 
   const { data: stats, isLoading: statsLoading } = useGetTransferStats({
     query: { queryKey: getGetTransferStatsQueryKey(), refetchInterval: 5000 },
+  });
+
+  const { data: lockedSummary, isLoading: lockedSummaryLoading } = useGetLockedBalanceSummary({
+    query: { queryKey: getGetLockedBalanceSummaryQueryKey(), refetchInterval: 3000 },
+  });
+
+  const { data: lockedBalances, isLoading: lockedBalancesLoading } = useListLockedBalances({
+    query: { queryKey: getListLockedBalancesQueryKey(), refetchInterval: 3000 },
   });
 
   const startMonitor = useStartWalletMonitor({
@@ -159,10 +205,115 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       ) : (
+        <>
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold tracking-tight">Monitored Wallets</h2>
+          <div className="flex items-center gap-2">
+            <Lock className="w-4 h-4 text-primary" />
+            <h2 className="text-lg font-semibold tracking-tight">Locked Pi Monitoring</h2>
           </div>
+          <p className="text-sm text-muted-foreground -mt-2">
+            Tracks time-locked (claimable) Pi balances separately from normal incoming transfers — waits for unlock, then claims and forwards automatically.
+          </p>
+
+          {lockedSummaryLoading ? (
+            <Skeleton className="h-20 w-full" />
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription className="text-xs uppercase tracking-wider font-semibold">Watching</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-mono font-bold text-yellow-500">
+                    {(lockedSummary?.monitoringCount ?? 0) + (lockedSummary?.claimingCount ?? 0)}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription className="text-xs uppercase tracking-wider font-semibold">Pending Unlock</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-mono font-bold text-yellow-500">
+                    {lockedSummary?.totalPendingAmount ?? "0"} <span className="text-sm text-muted-foreground">π</span>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription className="text-xs uppercase tracking-wider font-semibold">Claimed</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-mono font-bold text-green-500">
+                    {lockedSummary?.totalClaimedAmount ?? "0"} <span className="text-sm text-muted-foreground">π</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">{lockedSummary?.claimedCount ?? 0} balances</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription className="text-xs uppercase tracking-wider font-semibold">Failed / Expired</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-mono font-bold text-destructive">
+                    {(lockedSummary?.failedCount ?? 0) + (lockedSummary?.expiredCount ?? 0)}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          <Card>
+            <CardContent className="p-0">
+              {lockedBalancesLoading ? (
+                <div className="p-6"><Skeleton className="h-24 w-full" /></div>
+              ) : !lockedBalances?.length ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Zap className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                  <p>No locked Pi balances detected yet.</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader className="bg-accent/50">
+                    <TableRow>
+                      <TableHead>Wallet</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Unlocks In</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Claim Tx</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {lockedBalances.map((lb) => (
+                      <TableRow key={lb.id} className="font-mono text-sm">
+                        <TableCell className="font-sans font-medium">{lb.walletLabel ?? `#${lb.walletId}`}</TableCell>
+                        <TableCell className="font-bold">{parseFloat(lb.amount).toFixed(4)} π</TableCell>
+                        <TableCell>
+                          {lb.status === "monitoring" ? <LockedBalanceCountdown unlockAt={lb.unlockAt ?? null} /> : "—"}
+                        </TableCell>
+                        <TableCell><LockedBalanceStatusBadge status={lb.status} /></TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {lb.claimTxHash ? truncateHash(lb.claimTxHash) : lb.errorMessage ? (
+                            <span className="text-destructive">{lb.errorMessage}</span>
+                          ) : "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Wifi className="w-4 h-4 text-primary" />
+            <h2 className="text-lg font-semibold tracking-tight">Incoming Transaction Wallets</h2>
+          </div>
+          <p className="text-sm text-muted-foreground -mt-2">
+            Watches for regular incoming Pi payments and forwards them the moment they arrive.
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {walletList.map((wallet) => (
               <Card key={wallet.id} className={`transition-colors ${wallet.monitorRunning ? "border-primary/30 bg-primary/5" : "border-border"}`}>

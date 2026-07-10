@@ -205,6 +205,34 @@ paths:
               schema:
                 $ref: "#/components/schemas/MonitorSummary"
 
+  /locked-balances:
+    get:
+      operationId: listLockedBalances
+      tags: [wallets]
+      summary: List locked (claimable) Pi balances across all wallets, newest first
+      responses:
+        "200":
+          description: Locked balances across all wallets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LockedBalance"
+
+  /monitor/locked-summary:
+    get:
+      operationId: getLockedBalanceSummary
+      tags: [wallets]
+      summary: Get aggregate locked-Pi (claimable balance) monitoring stats across all wallets
+      responses:
+        "200":
+          description: Locked balance summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LockedBalanceSummary"
+
   /transfers:
     get:
       operationId: listTransfers
@@ -396,6 +424,32 @@ components:
           type: string
         claimedAt:
           type: ["string", "null"]
+        walletLabel:
+          type: ["string", "null"]
+          description: Friendly label of the owning wallet (populated on cross-wallet listings)
+
+    LockedBalanceSummary:
+      type: object
+      required: [monitoringCount, claimingCount, claimedCount, failedCount, expiredCount, totalPendingAmount, totalClaimedAmount]
+      properties:
+        monitoringCount:
+          type: integer
+          description: Locked balances still waiting for their unlock time
+        claimingCount:
+          type: integer
+          description: Locked balances currently mid-claim
+        claimedCount:
+          type: integer
+        failedCount:
+          type: integer
+        expiredCount:
+          type: integer
+        totalPendingAmount:
+          type: string
+          description: Sum of amounts for balances still monitoring or claiming
+        totalClaimedAmount:
+          type: string
+          description: Sum of amounts for balances already claimed
 
     Transfer:
       type: object

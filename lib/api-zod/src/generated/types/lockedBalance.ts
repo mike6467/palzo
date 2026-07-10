@@ -26,4 +26,9 @@ export interface LockedBalance {
   createdAt: string;
   /** @nullable */
   claimedAt?: string | null;
+  /**
+     * Friendly label of the owning wallet (populated on cross-wallet listings)
+     * @nullable
+     */
+  walletLabel?: string | null;
 }

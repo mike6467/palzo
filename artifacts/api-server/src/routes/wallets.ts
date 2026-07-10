@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { Keypair } from "stellar-sdk";
-import { db, walletsTable, transfersTable } from "@workspace/db";
+import { db, walletsTable, transfersTable, lockedBalancesTable } from "@workspace/db";
 import {
   CreateWalletBody,
   UpdateWalletBody,
@@ -17,8 +17,10 @@ import {
   StartWalletMonitorResponse,
   StopWalletMonitorResponse,
   GetLockedBalancesResponse,
+  ListLockedBalancesResponse,
+  GetLockedBalanceSummaryResponse,
 } from "@workspace/api-zod";
-import { eq, count, sum } from "drizzle-orm";
+import { eq, count, sum, desc } from "drizzle-orm";
 import {
   startWalletMonitor,
   stopWalletMonitor,
@@ -254,8 +256,77 @@ router.get("/wallets/:id/locked-balances", async (req, res): Promise<void> => {
         errorMessage: r.errorMessage ?? null,
         createdAt: r.createdAt.toISOString(),
         claimedAt: r.claimedAt ? r.claimedAt.toISOString() : null,
+        walletLabel: wallet.label,
       }))
     )
+  );
+});
+
+// Cross-wallet locked balance monitoring — distinct from the incoming-payment
+// forwarding wallets list: this tracks Pi lockups (claimable balances) and
+// their unlock/claim lifecycle, separately from ordinary incoming transfers.
+router.get("/locked-balances", async (_req, res): Promise<void> => {
+  const wallets = await db.select().from(walletsTable);
+  const walletLabelById = new Map(wallets.map((w) => [w.id, w.label]));
+
+  const records = await db
+    .select()
+    .from(lockedBalancesTable)
+    .orderBy(desc(lockedBalancesTable.createdAt));
+
+  res.json(
+    ListLockedBalancesResponse.parse(
+      records.map((r) => ({
+        id: r.id,
+        walletId: r.walletId,
+        balanceId: r.balanceId,
+        amount: r.amount.toString(),
+        unlockAt: r.unlockAt ? r.unlockAt.toISOString() : null,
+        status: r.status,
+        claimTxHash: r.claimTxHash ?? null,
+        errorMessage: r.errorMessage ?? null,
+        createdAt: r.createdAt.toISOString(),
+        claimedAt: r.claimedAt ? r.claimedAt.toISOString() : null,
+        walletLabel: walletLabelById.get(r.walletId) ?? null,
+      }))
+    )
+  );
+});
+
+router.get("/monitor/locked-summary", async (_req, res): Promise<void> => {
+  const rows = await db
+    .select({ status: lockedBalancesTable.status, cnt: count(), total: sum(lockedBalancesTable.amount) })
+    .from(lockedBalancesTable)
+    .groupBy(lockedBalancesTable.status);
+
+  let monitoringCount = 0;
+  let claimingCount = 0;
+  let claimedCount = 0;
+  let failedCount = 0;
+  let expiredCount = 0;
+  let totalPendingAmount = 0;
+  let totalClaimedAmount = 0;
+
+  for (const row of rows) {
+    const c = Number(row.cnt);
+    const t = Number(row.total ?? 0);
+    if (row.status === "monitoring") { monitoringCount = c; totalPendingAmount += t; }
+    else if (row.status === "claiming") { claimingCount = c; totalPendingAmount += t; }
+    else if (row.status === "claimed") { claimedCount = c; totalClaimedAmount += t; }
+    else if (row.status === "failed") failedCount = c;
+    else if (row.status === "expired") expiredCount = c;
+  }
+
+  res.json(
+    GetLockedBalanceSummaryResponse.parse({
+      monitoringCount,
+      claimingCount,
+      claimedCount,
+      failedCount,
+      expiredCount,
+      totalPendingAmount: totalPendingAmount.toFixed(7),
+      totalClaimedAmount: totalClaimedAmount.toFixed(7),
+    })
   );
 });
 
