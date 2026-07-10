@@ -29,6 +29,13 @@
       "when": 1783657000000,
       "tag": "0003_faster_poll_1s",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783750000000,
+      "tag": "0004_poll_10s",
+      "breakpoints": true
     }
   ]
 }
