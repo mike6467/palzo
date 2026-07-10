@@ -2,7 +2,29 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
 import * as schema from "./schema";
+
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+
+// This module gets bundled (esbuild) into each service's own dist/ output, so its
+// on-disk location varies by consumer and can't be used directly to find
+// lib/db/migrations. Instead, walk up from wherever we're running to find the
+// workspace root (marked by pnpm-workspace.yaml), which is stable regardless of
+// process.cwd() or bundling.
+function findWorkspaceRoot(startDir: string): string {
+  let dir = startDir;
+  while (true) {
+    if (fs.existsSync(path.join(dir, "pnpm-workspace.yaml"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      throw new Error(
+        `Could not locate workspace root (pnpm-workspace.yaml) starting from ${startDir}`,
+      );
+    }
+    dir = parent;
+  }
+}
 
 const { Pool } = pg;
 
@@ -21,7 +43,9 @@ export const db = drizzle(pool, { schema });
  * Safe to call on every startup.
  */
 export async function runMigrations(): Promise<void> {
-  const migrationsFolder = path.resolve(process.cwd(), "lib/db/migrations");
+  // Resolve from the workspace root, not process.cwd() or this module's bundled
+  // location — both vary depending on how/where the process was launched.
+  const migrationsFolder = path.join(findWorkspaceRoot(moduleDir), "lib/db/migrations");
   const client = await pool.connect();
 
   try {
