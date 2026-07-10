@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { runMigrations } from "@workspace/db";
+import { resetOrphanedClaimingBalances, resumeAllWalletMonitors } from "./lib/monitor";
 
 const rawPort = process.env["PORT"];
 
@@ -18,8 +19,9 @@ if (Number.isNaN(port) || port <= 0) {
 
 // Run DB migrations before accepting traffic
 runMigrations()
-  .then(() => {
+  .then(async () => {
     logger.info("Database migrations complete");
+    await resetOrphanedClaimingBalances();
     app.listen(port, (err) => {
       if (err) {
         logger.error({ err }, "Error listening on port");
@@ -27,6 +29,7 @@ runMigrations()
       }
       logger.info({ port }, "Server listening");
     });
+    await resumeAllWalletMonitors();
   })
   .catch((err) => {
     logger.error({ err }, "Database migration failed — refusing to start");

@@ -1,4 +1,4 @@
-import { Keypair, Horizon, TransactionBuilder, FeeBumpTransaction, Operation, Asset, BASE_FEE } from "stellar-sdk";
+import { Keypair, Horizon, TransactionBuilder, Operation, Asset } from "stellar-sdk";
 import { db, walletsTable, transfersTable, lockedBalancesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
@@ -189,10 +189,20 @@ export async function fetchClaimableBalances(claimantAddress: string): Promise<H
   return data?._embedded?.records ?? [];
 }
 
-// Builds and submits a claim_claimable_balance + payment transaction. When a sponsor
-// secret key is configured, the transaction fee is paid entirely by the sponsor via a
-// CAP-15 fee-bump transaction, so the claim/forward is never blocked or reduced by fee
-// availability on the (just-unlocked) source wallet.
+// Builds and submits a claim_claimable_balance + payment transaction.
+//
+// NOTE on sponsor fees: Pi Network's Horizon fork rejects CAP-15 fee-bump
+// transactions outright — every submission comes back
+// `Bad request - Invalid Envelope Type Stellar::EnvelopeType.envelope_type_tx_fee_bump(5)`.
+// Confirmed live against https://api.mainnet.minepi.com on 2026-07-10.
+// So instead of a fee-bump, when a sponsor key is configured we make the
+// SPONSOR account the transaction envelope's source — which is what pays the
+// fee and owns the sequence number — while each operation's own `source` is
+// set explicitly to the wallet address. Both the wallet and the sponsor sign
+// the same (ordinary, non-fee-bump) transaction: the wallet authorizes the
+// claim/payment operations, the sponsor authorizes being the fee/sequence
+// payer. This is standard Stellar operation-source-override, not CAP-15, so
+// Pi's Horizon fork accepts it.
 async function claimAndForwardLockedBalance(
   balanceId: string,
   amount: string,
@@ -203,19 +213,26 @@ async function claimAndForwardLockedBalance(
 ): Promise<string> {
   const server = new Horizon.Server(PI_HORIZON_URL, { allowHttp: false });
   const sourceKeypair = Keypair.fromSecret(secretKey);
+  const sponsorKeypair = sponsorSecretKey ? Keypair.fromSecret(sponsorSecretKey) : null;
 
-  const account = await server.loadAccount(sourceAddress);
   const fee = await server.fetchBaseFee();
 
-  // forwardable = claimed amount − fee buffer only (no network-reserve hold: the
-  // reserve is already satisfied by the wallet's existing balance, so the entire
-  // unlocked amount minus a small fee cushion can be forwarded).
-  const forwardable = Math.max(parseFloat(amount) - FEE_BUFFER_PI, 0);
+  // The account that owns the tx envelope pays the fee and supplies the
+  // sequence number. Use the sponsor for that when configured; otherwise the
+  // wallet pays its own fee (and we hold back a small buffer from the amount
+  // forwarded so the wallet's fee payment doesn't dip into its reserve).
+  const txSourceAddress = sponsorKeypair ? sponsorKeypair.publicKey() : sourceAddress;
+  const txSourceAccount = await server.loadAccount(txSourceAddress);
+  const opSource = sponsorKeypair ? sourceAddress : undefined;
 
-  const builder = new TransactionBuilder(account, {
+  const forwardable = sponsorKeypair
+    ? parseFloat(amount)
+    : Math.max(parseFloat(amount) - FEE_BUFFER_PI, 0);
+
+  const builder = new TransactionBuilder(txSourceAccount, {
     fee: fee.toString(),
     networkPassphrase: PI_NETWORK_PASSPHRASE,
-  }).addOperation(Operation.claimClaimableBalance({ balanceId }));
+  }).addOperation(Operation.claimClaimableBalance({ balanceId, source: opSource }));
 
   if (forwardable > 0) {
     builder.addOperation(
@@ -223,27 +240,23 @@ async function claimAndForwardLockedBalance(
         destination: destinationAddress,
         asset: Asset.native(),
         amount: forwardable.toFixed(7),
+        source: opSource,
       })
     );
   }
 
-  const innerTx = builder.setTimeout(30).build();
-  innerTx.sign(sourceKeypair);
+  const tx = builder.setTimeout(30).build();
+  tx.sign(sourceKeypair);
+  if (sponsorKeypair) tx.sign(sponsorKeypair);
 
-  if (sponsorSecretKey) {
-    const sponsorKeypair = Keypair.fromSecret(sponsorSecretKey);
-    const feeBumpTx = TransactionBuilder.buildFeeBumpTransaction(
-      sponsorKeypair,
-      (Math.max(parseInt(fee.toString(), 10), parseInt(BASE_FEE, 10)) * 2).toString(),
-      innerTx,
-      PI_NETWORK_PASSPHRASE
+  const result = await server.submitTransaction(tx);
+  // Horizon can resolve without throwing even when the transaction wasn't
+  // actually applied — never treat this as a claim unless both are present.
+  if (!result.successful || !result.hash) {
+    throw new Error(
+      `Transaction was not successful (successful=${String(result.successful)}, hash=${String(result.hash)})`
     );
-    feeBumpTx.sign(sponsorKeypair);
-    const result = await server.submitTransaction(feeBumpTx as unknown as FeeBumpTransaction);
-    return result.hash;
   }
-
-  const result = await server.submitTransaction(innerTx);
   return result.hash;
 }
 
@@ -651,6 +664,45 @@ export async function startWalletMonitor(walletId: number): Promise<void> {
   }, intervalMs);
 
   logger.info({ walletId, intervalMs }, "Wallet monitor started");
+}
+
+// Called once at server startup. Any locked_balances row still marked "claiming"
+// is necessarily orphaned — "claiming" only ever means an in-flight attempt in
+// THIS process's memory, and a fresh process has no in-flight attempts. Without
+// this reset, a claim interrupted by a restart/deploy would stay stuck in
+// "claiming" forever (scanForLockedBalances skips any existing row whose status
+// isn't "monitoring", so nothing would ever retry it).
+export async function resetOrphanedClaimingBalances(): Promise<number> {
+  const rows = await db
+    .update(lockedBalancesTable)
+    .set({ status: "monitoring" })
+    .where(eq(lockedBalancesTable.status, "claiming"))
+    .returning({ id: lockedBalancesTable.id, balanceId: lockedBalancesTable.balanceId });
+  if (rows.length > 0) {
+    logger.warn(
+      { count: rows.length, balanceIds: rows.map((r) => r.balanceId) },
+      "Reset orphaned 'claiming' locked balances back to 'monitoring' after restart"
+    );
+  }
+  return rows.length;
+}
+
+// Called once at server startup to resume monitoring for every fully-configured
+// wallet. Without this, monitoring silently stops on every restart/deploy until
+// a human notices and clicks Start again in the UI — a real risk for time-sensitive
+// locked-balance claims.
+export async function resumeAllWalletMonitors(): Promise<void> {
+  const wallets = await db.select().from(walletsTable).where(eq(walletsTable.isConfigured, true));
+  for (const wallet of wallets) {
+    try {
+      await startWalletMonitor(wallet.id);
+    } catch (err) {
+      logger.error({ err, walletId: wallet.id }, "Failed to resume wallet monitor on startup");
+    }
+  }
+  if (wallets.length > 0) {
+    logger.info({ count: wallets.length }, "Resumed wallet monitors after startup");
+  }
 }
 
 export function stopWalletMonitor(walletId: number): void {
