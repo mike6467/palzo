@@ -16,6 +16,27 @@ interface WalletMonitorState {
 
 const states = new Map<number, WalletMonitorState>();
 
+// Serializes all outbound forwarding transactions for a given wallet
+// (pollWallet's incoming-payment forward and the post-claim sweep both submit
+// payments from the same source account/sequence). Without this, the two
+// paths can race and submit competing transactions against the same wallet.
+const walletForwardLocks = new Map<number, Promise<unknown>>();
+async function withWalletForwardLock<T>(walletId: number, fn: () => Promise<T>): Promise<T> {
+  const prior = walletForwardLocks.get(walletId) ?? Promise.resolve();
+  let release: () => void;
+  const next = new Promise<void>((resolve) => (release = resolve));
+  walletForwardLocks.set(
+    walletId,
+    prior.then(() => next)
+  );
+  await prior;
+  try {
+    return await fn();
+  } finally {
+    release!();
+  }
+}
+
 function getOrCreateState(walletId: number): WalletMonitorState {
   if (!states.has(walletId)) {
     states.set(walletId, {
@@ -260,6 +281,73 @@ async function claimAndForwardLockedBalance(
   return result.hash;
 }
 
+// After a locked balance is claimed, the wallet's on-chain balance can end up
+// with spendable Pi beyond the reserve that wasn't part of the claim itself
+// (e.g. rounding leftovers, or funds that arrived before monitoring started
+// and were never picked up by the incoming-payment watcher in pollWallet,
+// which only reacts to newly-seen payments — not a wallet's resting balance).
+// Sweep it to the destination the same way a regular incoming-payment forward
+// would, so nothing is left stranded above the reserve after a claim.
+async function sweepAvailableBalance(walletId: number, wallet: typeof walletsTable.$inferSelect, reason: string) {
+  if (!wallet.sourceAddress || !wallet.destinationAddress || !wallet.secretKey) return;
+
+  // Never let a sweep failure propagate to the caller: this runs right after a
+  // claim has already succeeded, and the claim's "claimed" status must stay
+  // final regardless of what happens here.
+  try {
+    await withWalletForwardLock(walletId, async () => {
+      // Re-fetch balance INSIDE the lock: any concurrent forward that just
+      // finished waiting on this same lock could have already changed it, so
+      // a balance fetched before acquiring the lock could be stale here.
+      const currentBalance = await fetchWalletBalance(wallet.sourceAddress!);
+      const forwardableAmount = parseFloat((currentBalance - TOTAL_HOLD_PI).toFixed(7));
+      if (forwardableAmount <= 0) {
+        logger.info(
+          { walletId, currentBalance, totalHold: TOTAL_HOLD_PI },
+          "Post-claim balance sweep: nothing above reserve to forward"
+        );
+        return;
+      }
+
+      logger.info(
+        { walletId, currentBalance, forwardableAmount, reason },
+        "Post-claim balance sweep: forwarding leftover spendable balance"
+      );
+
+      const [record] = await db
+        .insert(transfersTable)
+        .values({
+          walletId,
+          incomingTxHash: `sweep-${reason}-${crypto.randomUUID()}`,
+          amount: forwardableAmount.toFixed(7),
+          fromAddress: wallet.sourceAddress,
+          status: "pending",
+        })
+        .returning();
+
+      try {
+        const outTxHash = await forwardPi(
+          wallet.sourceAddress!,
+          wallet.destinationAddress!,
+          wallet.secretKey!,
+          forwardableAmount.toFixed(7)
+        );
+        await db
+          .update(transfersTable)
+          .set({ status: "forwarded", outgoingTxHash: outTxHash, forwardedAt: new Date() })
+          .where(eq(transfersTable.id, record.id));
+        logger.info({ walletId, outTxHash, forwardedAmount: forwardableAmount }, "Post-claim sweep forwarded successfully");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await db.update(transfersTable).set({ status: "failed", errorMessage: msg }).where(eq(transfersTable.id, record.id));
+        logger.error({ err, walletId }, "Post-claim balance sweep forward failed");
+      }
+    });
+  } catch (err) {
+    logger.error({ err, walletId }, "Post-claim balance sweep encountered an unexpected error");
+  }
+}
+
 async function attemptClaim(walletId: number, wallet: typeof walletsTable.$inferSelect, balance: HorizonClaimableBalance) {
   const state = getOrCreateLockedState(balance.id);
   if (state.claiming) return;
@@ -285,6 +373,7 @@ async function attemptClaim(walletId: number, wallet: typeof walletsTable.$infer
       .where(eq(lockedBalancesTable.balanceId, balance.id));
     logger.info({ walletId, balanceId: balance.id, txHash }, "Claimed and forwarded locked Pi");
     stopTrackingLockedBalance(balance.id);
+    await sweepAvailableBalance(walletId, wallet, `claim-${balance.id}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error({ err, walletId, balanceId: balance.id }, "Claim attempt failed — will retry");
@@ -598,11 +687,8 @@ async function pollWallet(walletId: number) {
         .returning();
 
       try {
-        const outTxHash = await forwardPi(
-          wallet.sourceAddress,
-          wallet.destinationAddress,
-          wallet.secretKey,
-          forwardableAmount.toFixed(7)
+        const outTxHash = await withWalletForwardLock(walletId, () =>
+          forwardPi(wallet.sourceAddress!, wallet.destinationAddress!, wallet.secretKey!, forwardableAmount.toFixed(7))
         );
 
         await db
