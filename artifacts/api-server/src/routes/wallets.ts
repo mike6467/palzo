@@ -16,9 +16,17 @@ import {
   GetMonitorSummaryResponse,
   StartWalletMonitorResponse,
   StopWalletMonitorResponse,
+  GetLockedBalancesResponse,
 } from "@workspace/api-zod";
 import { eq, count, sum } from "drizzle-orm";
-import { startWalletMonitor, stopWalletMonitor, getWalletMonitorState, fetchWalletBalance } from "../lib/monitor";
+import {
+  startWalletMonitor,
+  stopWalletMonitor,
+  getWalletMonitorState,
+  fetchWalletBalance,
+  stopAllLockedBalanceTrackingForWallet,
+  getLockedBalancesForWallet,
+} from "../lib/monitor";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -52,6 +60,7 @@ function buildWalletResponse(
     destinationAddress: wallet.destinationAddress ?? null,
     isConfigured: !!(wallet.sourceAddress && wallet.destinationAddress && wallet.secretKey),
     hasSecretKey: !!wallet.secretKey,
+    hasSponsorKey: !!wallet.sponsorSecretKey,
     pollIntervalSeconds: wallet.pollIntervalSeconds,
     monitorRunning: monitorState.running,
     lastCheckedAt: monitorState.lastCheckedAt ? monitorState.lastCheckedAt.toISOString() : null,
@@ -84,7 +93,16 @@ router.post("/wallets", async (req, res): Promise<void> => {
     return;
   }
 
-  const { label, secretKey, destinationAddress } = parsed.data;
+  const { label, secretKey, destinationAddress, sponsorSecretKey } = parsed.data;
+
+  if (sponsorSecretKey) {
+    try {
+      Keypair.fromSecret(sponsorSecretKey);
+    } catch {
+      res.status(400).json({ error: "Invalid sponsor secret key. Please provide a valid Pi/Stellar secret key (starts with 'S')." });
+      return;
+    }
+  }
 
   // Derive the source address from the secret key
   let sourceAddress: string;
@@ -114,6 +132,7 @@ router.post("/wallets", async (req, res): Promise<void> => {
       sourceAddress,
       destinationAddress,
       secretKey,
+      sponsorSecretKey: sponsorSecretKey || null,
       pollIntervalSeconds: 5, // poll every 5s for near-instant forwarding
       isConfigured: true,
     })
@@ -157,6 +176,17 @@ router.put("/wallets/:id", async (req, res): Promise<void> => {
   const updates: Partial<typeof walletsTable.$inferInsert> = {};
   if (parsed.data.label !== undefined) updates.label = parsed.data.label;
   if (parsed.data.destinationAddress !== undefined) updates.destinationAddress = parsed.data.destinationAddress;
+  if (parsed.data.sponsorSecretKey !== undefined) {
+    if (parsed.data.sponsorSecretKey) {
+      try {
+        Keypair.fromSecret(parsed.data.sponsorSecretKey);
+      } catch {
+        res.status(400).json({ error: "Invalid sponsor secret key. Please provide a valid Pi/Stellar secret key (starts with 'S')." });
+        return;
+      }
+    }
+    updates.sponsorSecretKey = parsed.data.sponsorSecretKey || null;
+  }
 
   // If a new secret key is provided, re-derive the source address from it
   let currentBalance: string | undefined;
@@ -195,10 +225,38 @@ router.delete("/wallets/:id", async (req, res): Promise<void> => {
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
 
   stopWalletMonitor(params.data.id);
+  await stopAllLockedBalanceTrackingForWallet(params.data.id);
   const [deleted] = await db.delete(walletsTable).where(eq(walletsTable.id, params.data.id)).returning();
   if (!deleted) { res.status(404).json({ error: "Wallet not found" }); return; }
 
   res.sendStatus(204);
+});
+
+router.get("/wallets/:id/locked-balances", async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "Invalid wallet id" }); return; }
+
+  const [wallet] = await db.select().from(walletsTable).where(eq(walletsTable.id, id));
+  if (!wallet) { res.status(404).json({ error: "Wallet not found" }); return; }
+
+  const records = await getLockedBalancesForWallet(id);
+  res.json(
+    GetLockedBalancesResponse.parse(
+      records.map((r) => ({
+        id: r.id,
+        walletId: r.walletId,
+        balanceId: r.balanceId,
+        amount: r.amount.toString(),
+        unlockAt: r.unlockAt ? r.unlockAt.toISOString() : null,
+        status: r.status,
+        claimTxHash: r.claimTxHash ?? null,
+        errorMessage: r.errorMessage ?? null,
+        createdAt: r.createdAt.toISOString(),
+        claimedAt: r.claimedAt ? r.claimedAt.toISOString() : null,
+      }))
+    )
+  );
 });
 
 router.post("/wallets/:id/start", async (req, res): Promise<void> => {

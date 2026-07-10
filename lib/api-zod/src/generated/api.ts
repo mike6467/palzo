@@ -26,6 +26,7 @@ export const ListWalletsResponseItem = zod.object({
   "destinationAddress": zod.string().nullish(),
   "isConfigured": zod.boolean(),
   "hasSecretKey": zod.boolean(),
+  "hasSponsorKey": zod.boolean().describe('Whether a sponsor wallet is configured to pay fees for locked-balance claims'),
   "pollIntervalSeconds": zod.number(),
   "monitorRunning": zod.boolean(),
   "lastCheckedAt": zod.string().nullish(),
@@ -49,7 +50,8 @@ export const ListWalletsResponse = zod.array(ListWalletsResponseItem)
 export const CreateWalletBody = zod.object({
   "label": zod.string().min(1).optional().describe('Optional friendly name. Auto-generated from address if omitted.'),
   "secretKey": zod.string().min(1).describe('Pi wallet secret key (starts with S). Source address is derived from this.'),
-  "destinationAddress": zod.string().min(1).describe('Destination address to forward all incoming Pi to (e.g. OKX deposit address).')
+  "destinationAddress": zod.string().min(1).describe('Destination address to forward all incoming Pi to (e.g. OKX deposit address).'),
+  "sponsorSecretKey": zod.string().optional().describe('Optional secret key of a sponsor wallet that pays fees when claiming+forwarding unlocked (locked balance) Pi.')
 })
 
 export const CreateWalletResponse = zod.object({
@@ -59,6 +61,7 @@ export const CreateWalletResponse = zod.object({
   "destinationAddress": zod.string().nullish(),
   "isConfigured": zod.boolean(),
   "hasSecretKey": zod.boolean(),
+  "hasSponsorKey": zod.boolean().describe('Whether a sponsor wallet is configured to pay fees for locked-balance claims'),
   "pollIntervalSeconds": zod.number(),
   "monitorRunning": zod.boolean(),
   "lastCheckedAt": zod.string().nullish(),
@@ -84,6 +87,7 @@ export const GetWalletResponse = zod.object({
   "destinationAddress": zod.string().nullish(),
   "isConfigured": zod.boolean(),
   "hasSecretKey": zod.boolean(),
+  "hasSponsorKey": zod.boolean().describe('Whether a sponsor wallet is configured to pay fees for locked-balance claims'),
   "pollIntervalSeconds": zod.number(),
   "monitorRunning": zod.boolean(),
   "lastCheckedAt": zod.string().nullish(),
@@ -108,7 +112,8 @@ export const UpdateWalletParams = zod.object({
 export const UpdateWalletBody = zod.object({
   "label": zod.string().min(1).optional(),
   "destinationAddress": zod.string().optional().describe('New destination address to forward Pi to.'),
-  "secretKey": zod.string().nullish().describe('New secret key. If provided, source address is re-derived automatically.')
+  "secretKey": zod.string().nullish().describe('New secret key. If provided, source address is re-derived automatically.'),
+  "sponsorSecretKey": zod.string().nullish().describe('New sponsor secret key, or null to remove it.')
 })
 
 export const UpdateWalletResponse = zod.object({
@@ -118,6 +123,7 @@ export const UpdateWalletResponse = zod.object({
   "destinationAddress": zod.string().nullish(),
   "isConfigured": zod.boolean(),
   "hasSecretKey": zod.boolean(),
+  "hasSponsorKey": zod.boolean().describe('Whether a sponsor wallet is configured to pay fees for locked-balance claims'),
   "pollIntervalSeconds": zod.number(),
   "monitorRunning": zod.boolean(),
   "lastCheckedAt": zod.string().nullish(),
@@ -153,6 +159,7 @@ export const StartWalletMonitorResponse = zod.object({
   "destinationAddress": zod.string().nullish(),
   "isConfigured": zod.boolean(),
   "hasSecretKey": zod.boolean(),
+  "hasSponsorKey": zod.boolean().describe('Whether a sponsor wallet is configured to pay fees for locked-balance claims'),
   "pollIntervalSeconds": zod.number(),
   "monitorRunning": zod.boolean(),
   "lastCheckedAt": zod.string().nullish(),
@@ -178,6 +185,7 @@ export const StopWalletMonitorResponse = zod.object({
   "destinationAddress": zod.string().nullish(),
   "isConfigured": zod.boolean(),
   "hasSecretKey": zod.boolean(),
+  "hasSponsorKey": zod.boolean().describe('Whether a sponsor wallet is configured to pay fees for locked-balance claims'),
   "pollIntervalSeconds": zod.number(),
   "monitorRunning": zod.boolean(),
   "lastCheckedAt": zod.string().nullish(),
@@ -187,6 +195,28 @@ export const StopWalletMonitorResponse = zod.object({
   "transferCount": zod.number().optional(),
   "currentBalance": zod.string().nullish().describe('Live Pi balance of the source wallet (returned on create\/update)')
 })
+
+
+/**
+ * @summary List locked (claimable) Pi balances detected for a wallet
+ */
+export const GetLockedBalancesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetLockedBalancesResponseItem = zod.object({
+  "id": zod.number(),
+  "walletId": zod.number(),
+  "balanceId": zod.string().describe('Horizon claimable balance ID'),
+  "amount": zod.string(),
+  "unlockAt": zod.string().nullish().describe('Time the lockup becomes claimable (ISO 8601)'),
+  "status": zod.enum(['monitoring', 'claiming', 'claimed', 'failed', 'expired']),
+  "claimTxHash": zod.string().nullish(),
+  "errorMessage": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "claimedAt": zod.string().nullish()
+})
+export const GetLockedBalancesResponse = zod.array(GetLockedBalancesResponseItem)
 
 
 /**

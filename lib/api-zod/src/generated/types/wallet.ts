@@ -16,6 +16,8 @@ export interface Wallet {
   destinationAddress?: string | null;
   isConfigured: boolean;
   hasSecretKey: boolean;
+  /** Whether a sponsor wallet is configured to pay fees for locked-balance claims */
+  hasSponsorKey: boolean;
   pollIntervalSeconds: number;
   monitorRunning: boolean;
   /** @nullable */

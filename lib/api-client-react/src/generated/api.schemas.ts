@@ -19,6 +19,8 @@ export interface Wallet {
   destinationAddress?: string | null;
   isConfigured: boolean;
   hasSecretKey: boolean;
+  /** Whether a sponsor wallet is configured to pay fees for locked-balance claims */
+  hasSponsorKey: boolean;
   pollIntervalSeconds: number;
   monitorRunning: boolean;
   /** @nullable */
@@ -52,6 +54,8 @@ export interface WalletInput {
      * @minLength 1
      */
   destinationAddress: string;
+  /** Optional secret key of a sponsor wallet that pays fees when claiming+forwarding unlocked (locked balance) Pi. */
+  sponsorSecretKey?: string;
 }
 
 export interface WalletUpdate {
@@ -64,6 +68,11 @@ export interface WalletUpdate {
      * @nullable
      */
   secretKey?: string | null;
+  /**
+     * New sponsor secret key, or null to remove it.
+     * @nullable
+     */
+  sponsorSecretKey?: string | null;
 }
 
 export interface MonitorSummary {
@@ -73,6 +82,38 @@ export interface MonitorSummary {
   totalTransactions: number;
   successCount?: number;
   failedCount?: number;
+}
+
+export type LockedBalanceStatus = typeof LockedBalanceStatus[keyof typeof LockedBalanceStatus];
+
+
+export const LockedBalanceStatus = {
+  monitoring: 'monitoring',
+  claiming: 'claiming',
+  claimed: 'claimed',
+  failed: 'failed',
+  expired: 'expired',
+} as const;
+
+export interface LockedBalance {
+  id: number;
+  walletId: number;
+  /** Horizon claimable balance ID */
+  balanceId: string;
+  amount: string;
+  /**
+     * Time the lockup becomes claimable (ISO 8601)
+     * @nullable
+     */
+  unlockAt?: string | null;
+  status: LockedBalanceStatus;
+  /** @nullable */
+  claimTxHash?: string | null;
+  /** @nullable */
+  errorMessage?: string | null;
+  createdAt: string;
+  /** @nullable */
+  claimedAt?: string | null;
 }
 
 export type TransferStatus = typeof TransferStatus[keyof typeof TransferStatus];

@@ -11,6 +11,7 @@ import {
   useStartWalletMonitor, 
   useStopWalletMonitor,
   useListTransfers,
+  useGetLockedBalances,
   getListWalletsQueryKey,
   getGetMonitorSummaryQueryKey,
   getGetWalletQueryKey
@@ -23,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Shield, Save, Play, Square, Trash2, Activity } from "lucide-react";
+import { ArrowLeft, Shield, Save, Play, Square, Trash2, Activity, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { truncateHash } from "./dashboard";
@@ -32,7 +33,40 @@ const formSchema = z.object({
   label: z.string().min(1, "Label is required"),
   destinationAddress: z.string().min(1, "OKX deposit address is required").regex(/^(G[A-Z2-7]{55}|M[A-Z2-7]{68})$/, "Must be a valid Pi/Stellar address (starts with G or M)"),
   secretKey: z.string().regex(/^S[A-Z2-7]{55}$/, "Must be a valid Pi/Stellar secret key (starts with S)").optional().or(z.literal("")),
+  sponsorSecretKey: z.string().regex(/^S[A-Z2-7]{55}$/, "Must be a valid Pi/Stellar secret key (starts with S)").optional().or(z.literal("")),
 });
+
+function LockedBalanceStatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    monitoring: "text-yellow-500 border-yellow-500/30",
+    claiming: "text-blue-400 border-blue-400/30 animate-pulse",
+    claimed: "text-green-500 border-green-500/30",
+    failed: "text-destructive border-destructive/30",
+    expired: "text-muted-foreground border-muted-foreground/30",
+  };
+  return (
+    <Badge variant="outline" className={styles[status] ?? ""}>
+      {status}
+    </Badge>
+  );
+}
+
+function LockedBalanceCountdown({ unlockAt }: { unlockAt: string | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(t);
+  }, []);
+  if (!unlockAt) return <span className="text-muted-foreground">unknown</span>;
+  const msLeft = new Date(unlockAt).getTime() - now;
+  if (msLeft <= 0) return <span className="text-primary font-bold">unlocking now…</span>;
+  const totalSeconds = Math.ceil(msLeft / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const label = h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`;
+  return <span className={msLeft <= 30_000 ? "text-primary font-bold" : ""}>{label}</span>;
+}
 
 export default function WalletDetail() {
   const { id } = useParams();
@@ -52,6 +86,10 @@ export default function WalletDetail() {
     walletId,
     limit: 10,
     offset: 0
+  });
+
+  const { data: lockedBalances } = useGetLockedBalances(walletId, {
+    query: { queryKey: ["locked-balances", walletId], refetchInterval: 2000 },
   });
 
   const updateWallet = useUpdateWallet({
@@ -84,6 +122,7 @@ export default function WalletDetail() {
       label: "",
       destinationAddress: "",
       secretKey: "",
+      sponsorSecretKey: "",
     },
   });
 
@@ -93,6 +132,7 @@ export default function WalletDetail() {
         label: wallet.label,
         destinationAddress: wallet.destinationAddress || "",
         secretKey: "",
+        sponsorSecretKey: "",
       });
     }
   }, [wallet, form]);
@@ -102,6 +142,7 @@ export default function WalletDetail() {
       label: values.label,
       destinationAddress: values.destinationAddress,
       secretKey: values.secretKey || undefined,
+      sponsorSecretKey: values.sponsorSecretKey || undefined,
     }});
   };
 
@@ -209,6 +250,49 @@ export default function WalletDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {lockedBalances && lockedBalances.length > 0 && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Zap className="h-5 w-5 text-primary" />
+              Locked Pi — Unlock Watch
+            </CardTitle>
+            <CardDescription>
+              Detected lockups are polled as often as every 100ms in the final seconds so the claim + forward fires
+              the instant they unlock.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader className="bg-accent/50">
+                <TableRow>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Unlocks In</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Claim Tx</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lockedBalances.map((lb) => (
+                  <TableRow key={lb.id} className="font-mono text-sm">
+                    <TableCell className="font-bold">{parseFloat(lb.amount).toFixed(4)} π</TableCell>
+                    <TableCell>
+                      {lb.status === "monitoring" ? <LockedBalanceCountdown unlockAt={lb.unlockAt ?? null} /> : "—"}
+                    </TableCell>
+                    <TableCell><LockedBalanceStatusBadge status={lb.status} /></TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {lb.claimTxHash ? truncateHash(lb.claimTxHash) : lb.errorMessage ? (
+                        <span className="text-destructive">{lb.errorMessage}</span>
+                      ) : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="history" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
@@ -329,6 +413,28 @@ export default function WalletDetail() {
                           <Input type="password" placeholder="Leave blank to keep current key" {...field} className="font-mono bg-accent/50" autoComplete="off" />
                         </FormControl>
                         <FormDescription>Enter a new key to replace it. Source address will be re-derived automatically.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="sponsorSecretKey"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Sponsor Wallet Secret Key{" "}
+                          <span className="text-muted-foreground font-normal">
+                            (optional{wallet.hasSponsorKey ? " — currently set" : ""})
+                          </span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input type="password" placeholder="Leave blank to keep current sponsor" {...field} className="font-mono bg-accent/50" autoComplete="off" />
+                        </FormControl>
+                        <FormDescription>
+                          Pays the network fee when claiming and forwarding locked (lockup) Pi the instant it unlocks.
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}

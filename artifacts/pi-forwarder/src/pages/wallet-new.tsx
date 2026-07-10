@@ -20,6 +20,11 @@ const formSchema = z.object({
     .string()
     .min(1, "OKX deposit address is required")
     .regex(/^(G[A-Z2-7]{55}|M[A-Z2-7]{68})$/, "Must be a valid Stellar/Pi address (starts with G or M)"),
+  sponsorSecretKey: z
+    .string()
+    .regex(/^S[A-Z2-7]{55}$/, "Must be a valid Pi/Stellar secret key (56 characters, starts with S)")
+    .optional()
+    .or(z.literal("")),
 });
 
 export default function WalletNew() {
@@ -58,11 +63,17 @@ export default function WalletNew() {
     defaultValues: {
       secretKey: "",
       destinationAddress: "",
+      sponsorSecretKey: "",
     },
   });
 
   function onSubmit(values: z.infer<typeof formSchema>) {
-    createWallet.mutate({ data: values });
+    createWallet.mutate({
+      data: {
+        ...values,
+        sponsorSecretKey: values.sponsorSecretKey || undefined,
+      },
+    });
   }
 
   return (
@@ -140,6 +151,31 @@ export default function WalletNew() {
                 )}
               />
 
+              <FormField
+                control={form.control}
+                name="sponsorSecretKey"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sponsor Wallet Secret Key <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                    <FormControl>
+                      <Input
+                        type="password"
+                        placeholder="S… (leave blank to pay fees from the source wallet)"
+                        {...field}
+                        className="font-mono bg-accent/50 tracking-widest"
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      A separate wallet that pays network fees when claiming and forwarding locked (unlocked-lockup) Pi,
+                      so the claim never waits on or eats into the wallet's own balance.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm text-muted-foreground space-y-1">
                 <p className="font-medium text-foreground flex items-center gap-1.5">
                   <Zap className="h-4 w-4 text-primary" /> What happens next
@@ -150,6 +186,7 @@ export default function WalletNew() {
                   <li>Monitor starts — checking every 10 seconds</li>
                   <li>Any incoming Pi is forwarded to your OKX address immediately</li>
                   <li>1.02 π reserve is always kept in the source wallet</li>
+                  <li>Locked Pi lockups are tracked and claimed the instant they unlock, polling as fast as every 100ms in the final seconds</li>
                 </ul>
               </div>
 

@@ -8,6 +8,8 @@
 
 export * from './healthStatus';
 export * from './listTransfersParams';
+export * from './lockedBalance';
+export * from './lockedBalanceStatus';
 export * from './monitorSummary';
 export * from './transfer';
 export * from './transferList';

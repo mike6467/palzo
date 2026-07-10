@@ -16,4 +16,9 @@ export interface WalletUpdate {
      * @nullable
      */
   secretKey?: string | null;
+  /**
+     * New sponsor secret key, or null to remove it.
+     * @nullable
+     */
+  sponsorSecretKey?: string | null;
 }

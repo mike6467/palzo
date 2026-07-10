@@ -22,6 +22,7 @@ import type {
 import type {
   HealthStatus,
   ListTransfersParams,
+  LockedBalance,
   MonitorSummary,
   Transfer,
   TransferList,
@@ -644,6 +645,83 @@ export const useStopWalletMonitor = <TError = ErrorType<void>,
       > => {
       return useMutation(getStopWalletMonitorMutationOptions(options));
     }
+
+export const getGetLockedBalancesUrl = (id: number,) => {
+
+
+
+
+  return `/api/wallets/${id}/locked-balances`
+}
+
+/**
+ * @summary List locked (claimable) Pi balances detected for a wallet
+ */
+export const getLockedBalances = async (id: number, options?: RequestInit): Promise<LockedBalance[]> => {
+
+  return customFetch<LockedBalance[]>(getGetLockedBalancesUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLockedBalancesQueryKey = (id: number,) => {
+    return [
+    `/api/wallets/${id}/locked-balances`
+    ] as const;
+    }
+
+
+export const getGetLockedBalancesQueryOptions = <TData = Awaited<ReturnType<typeof getLockedBalances>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLockedBalances>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLockedBalancesQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLockedBalances>>> = ({ signal }) => getLockedBalances(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLockedBalances>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLockedBalancesQueryResult = NonNullable<Awaited<ReturnType<typeof getLockedBalances>>>
+export type GetLockedBalancesQueryError = ErrorType<void>
+
+
+/**
+ * @summary List locked (claimable) Pi balances detected for a wallet
+ */
+
+export function useGetLockedBalances<TData = Awaited<ReturnType<typeof getLockedBalances>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLockedBalances>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLockedBalancesQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetMonitorSummaryUrl = () => {
 

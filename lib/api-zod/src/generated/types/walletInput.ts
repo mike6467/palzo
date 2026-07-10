@@ -22,4 +22,6 @@ export interface WalletInput {
      * @minLength 1
      */
   destinationAddress: string;
+  /** Optional secret key of a sponsor wallet that pays fees when claiming+forwarding unlocked (locked balance) Pi. */
+  sponsorSecretKey?: string;
 }

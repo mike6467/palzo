@@ -8,6 +8,13 @@
       "when": 1783554533916,
       "tag": "0000_smart_annihilus",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783555200000,
+      "tag": "0001_sponsor_and_locked_balances",
+      "breakpoints": true
     }
   ]
 }
